@@ -1,33 +1,40 @@
+// models/PurchaseOrdersModel.js
 export default (sequelize, DataTypes) => {
-  const User = sequelize.define('User', {
+  const PurchaseOrder = sequelize.define('PurchaseOrder', {
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
     },
-    full_name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    email: {
+    purchase_order_id: {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
-      validate: {
-        isEmail: true,
-      },
     },
-    password_hash: {
+    purchase_quotation_id: {
       type: DataTypes.STRING,
       allowNull: false,
     },
-    role_id: {
+    supplier_id: {
       type: DataTypes.INTEGER,
-      allowNull: true,
+      allowNull: false,
     },
-    role_name: {
+    purchase_order_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: false,
+    },
+    purchase_type: {
       type: DataTypes.STRING,
-      allowNull: true,
+    },
+    po_status: {
+      type: DataTypes.STRING,
+      defaultValue: 'Pending',
+    },
+    owner: {
+      type: DataTypes.STRING,
+    },
+    description: {
+      type: DataTypes.TEXT,
     },
     created_at: {
       type: DataTypes.DATE,
@@ -38,9 +45,9 @@ export default (sequelize, DataTypes) => {
       defaultValue: DataTypes.NOW,
     },
   }, {
-    tableName: 'users',
+    tableName: 'purchase_orders',
     timestamps: false,
   });
 
-  return User;
+  return PurchaseOrder;
 };

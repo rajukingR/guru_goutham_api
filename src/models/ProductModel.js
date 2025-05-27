@@ -55,8 +55,21 @@ export default (sequelize, DataTypes) => {
     },
   }, {
     tableName: 'products',
-    timestamps: false, // because you're manually handling created_at, updated_at
+    timestamps: false, 
   });
 
+
+   Product.associate = (models) => {
+        Product.belongsToMany(models.Lead, {
+            through: {
+                model: 'lead_products',
+                unique: false,
+                timestamps: false
+            },
+            foreignKey: 'product_id',
+            otherKey: 'lead_id',
+            as: 'leads'
+        });
+    };
   return Product;
 };

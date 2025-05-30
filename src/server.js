@@ -24,7 +24,7 @@ import clientsRoutes from './routes/clientsRoutes.js';
 import contactTypeRoutes from './routes/contactTypeRoutes.js';
 import taxTypeRoutes from './routes/taxTypeRoutes.js';
 import purchaseRequestsRoutes from './routes/purchaseRequestsRoutes.js';
-
+import brandRoutes from './routes/brandRoutes.js';
 
 dotenv.config();
 
@@ -67,6 +67,7 @@ app.use('/api/clients', clientsRoutes);
 app.use('/api/contact-types', contactTypeRoutes);
 app.use('/api/tax-types', taxTypeRoutes);
 app.use('/api/purchase-requests', purchaseRequestsRoutes);
+app.use('/api/brand', brandRoutes);
 
 
 const PORT = process.env.PORT || 5000;

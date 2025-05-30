@@ -60,16 +60,12 @@ export default (sequelize, DataTypes) => {
 
 
    Product.associate = (models) => {
-        Product.belongsToMany(models.Lead, {
-            through: {
-                model: 'lead_products',
-                unique: false,
-                timestamps: false
-            },
-            foreignKey: 'product_id',
-            otherKey: 'lead_id',
-            as: 'leads'
-        });
-    };
+    Product.belongsToMany(models.Lead, {
+      through: models.LeadProduct,
+      foreignKey: 'product_id',
+      otherKey: 'lead_id',
+      as: 'leads'
+    });
+  };
   return Product;
 };

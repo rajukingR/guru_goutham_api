@@ -11,7 +11,7 @@ export default (sequelize, DataTypes) => {
       unique: true,
     },
     purchase_request_id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING(50),
       allowNull: false,
     },
     supplier_id: {
@@ -55,6 +55,14 @@ export default (sequelize, DataTypes) => {
     tableName: 'purchase_quotations',
     timestamps: false,
   });
+
+PurchaseQuotation.associate = (models) => {
+  PurchaseQuotation.belongsTo(models.Supplier, {
+    foreignKey: 'supplier_id',
+    as: 'supplier', // <-- Must match with controller include
+  });
+};
+
 
   return PurchaseQuotation;
 };

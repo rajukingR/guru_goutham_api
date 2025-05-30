@@ -10,9 +10,7 @@ export default (sequelize, DataTypes) => {
       allowNull: false,
       unique: true
     },
-    vendor_invoice_number: {
-      type: DataTypes.STRING
-    },
+    vendor_invoice_number: DataTypes.STRING,
     purchase_order_id: {
       type: DataTypes.STRING,
       allowNull: false
@@ -29,16 +27,12 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.DATEONLY,
       allowNull: false
     },
-    purchase_type: {
-      type: DataTypes.STRING
-    },
+    purchase_type: DataTypes.STRING,
     goods_receipt_status: {
-      type: DataTypes.ENUM('Scheduled', 'Partial Delivery', 'Delivered'),
-      defaultValue: 'Scheduled',
+      type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
+      defaultValue: 'Pending'
     },
-    description: {
-      type: DataTypes.TEXT
-    },
+    description: DataTypes.TEXT,
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
@@ -46,11 +40,20 @@ export default (sequelize, DataTypes) => {
     updated_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
-    },
+    }
   }, {
     tableName: 'goods_receipts',
-    timestamps: false,
+    timestamps: false
   });
+
+  // 👇 Define associate later
+  GoodsReceipt.associate = (models) => {
+    GoodsReceipt.hasMany(models.GoodsReceiptItem, {
+      foreignKey: 'goods_receipt_id',
+      sourceKey: 'id',
+      as: 'selected_products'
+    });
+  };
 
   return GoodsReceipt;
 };

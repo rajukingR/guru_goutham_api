@@ -7,6 +7,8 @@ import {
   deleteSupplier
 } from '../controllers/SupplierController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
 router.post('/create', createSupplier);

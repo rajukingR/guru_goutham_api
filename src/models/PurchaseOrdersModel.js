@@ -49,5 +49,18 @@ export default (sequelize, DataTypes) => {
     timestamps: false,
   });
 
+
+   PurchaseOrder.associate = (models) => {
+    PurchaseOrder.belongsTo(models.Supplier, {
+      foreignKey: 'supplier_id',
+      as: 'supplier',
+    });
+
+     PurchaseOrder.hasMany(models.PurchaseOrderItem, {
+    foreignKey: 'purchase_order_id',
+    as: 'selected_products',
+  });
+  };
+
   return PurchaseOrder;
 };

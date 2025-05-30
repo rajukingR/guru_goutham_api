@@ -7,6 +7,8 @@ import {
   deleteLead
 } from '../controllers/leadController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
 router.post('/create', createLead);

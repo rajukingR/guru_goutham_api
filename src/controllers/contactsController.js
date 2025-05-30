@@ -20,7 +20,8 @@ export const createContact = async (req, res) => {
       pan_no,
       owner,
       remarks,
-      contact_generated_by
+      contact_generated_by,
+      status // NEW FIELD
     } = req.body;
 
     const contact = await Contact.create({
@@ -38,7 +39,8 @@ export const createContact = async (req, res) => {
       pan_no,
       owner,
       remarks,
-      contact_generated_by
+      contact_generated_by,
+      status // NEW FIELD
     });
 
     res.status(201).json({ message: 'Contact created successfully', contact });
@@ -47,6 +49,7 @@ export const createContact = async (req, res) => {
     res.status(500).json({ message: 'Error creating contact', error });
   }
 };
+
 
 // Get all contacts
 export const getAllContacts = async (req, res) => {
@@ -58,6 +61,25 @@ export const getAllContacts = async (req, res) => {
     res.status(500).json({ message: 'Error fetching contacts', error });
   }
 };
+
+
+// Get all clients where status is 'Active' (and optionally is_active = 1)
+export const getAllContactsActived = async (req, res) => {
+  try {
+    const contacts = await Contact.findAll({
+      where: {
+        status: 'Active',
+      }
+    });
+
+    res.status(200).json(contacts);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error fetching active contacts', error });
+  }
+};
+
+
 
 // Get contact by ID
 export const getContactById = async (req, res) => {
@@ -95,7 +117,8 @@ export const updateContact = async (req, res) => {
       pan_no,
       owner,
       remarks,
-      contact_generated_by
+      contact_generated_by,
+      status // NEW FIELD
     } = req.body;
 
     const contact = await Contact.findByPk(id);
@@ -119,6 +142,7 @@ export const updateContact = async (req, res) => {
       owner,
       remarks,
       contact_generated_by,
+      status, // NEW FIELD
       updated_at: new Date()
     });
 
@@ -128,6 +152,7 @@ export const updateContact = async (req, res) => {
     res.status(500).json({ message: 'Error updating contact', error });
   }
 };
+
 
 // Delete contact
 export const deleteContact = async (req, res) => {

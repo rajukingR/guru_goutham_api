@@ -35,22 +35,18 @@ export default (sequelize, DataTypes) => {
     });
 
     Lead.associate = (models) => {
-        Lead.belongsTo(models.Contact, {
-            foreignKey: 'contact_id',
-            as: 'contact'
-        });
+    Lead.belongsTo(models.Contact, {
+      foreignKey: 'contact_id',
+      as: 'contact'
+    });
 
-        Lead.belongsToMany(models.Product, {
-            through: {
-                model: 'lead_products',
-                unique: false,
-                timestamps: false
-            },
-            foreignKey: 'lead_id',
-            otherKey: 'product_id',
-            as: 'products'
-        });
-    };
+    Lead.belongsToMany(models.Product, {
+      through: models.LeadProduct,
+      foreignKey: 'lead_id',
+      otherKey: 'product_id',
+      as: 'products'
+    });
+  };
 
     return Lead;
 };

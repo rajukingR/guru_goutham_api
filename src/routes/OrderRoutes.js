@@ -7,6 +7,7 @@ import {
   deleteOrder
 } from '../controllers/OrderControllerCrm.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
 
 
 const router = express.Router();

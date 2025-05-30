@@ -36,7 +36,12 @@ export default (sequelize, DataTypes) => {
     Supplier.hasOne(models.SupplierAddress, { foreignKey: 'supplier_id', as: 'address' });
     Supplier.hasOne(models.BankDetail, { foreignKey: 'supplier_id', as: 'bank' });
     Supplier.hasMany(models.SupplierContact, { foreignKey: 'supplier_id', as: 'contacts' });
+   Supplier.hasMany(models.PurchaseQuotation, {
+    foreignKey: 'supplier_id',
+    as: 'quotations',
+  });
   };
+
   
   return Supplier;
 };

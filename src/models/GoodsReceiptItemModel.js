@@ -19,19 +19,20 @@ export default (sequelize, DataTypes) => {
     quantity: {
       type: DataTypes.INTEGER
     },
-    price_per_unit: {
-      type: DataTypes.DECIMAL(10, 2)
-    },
-    gst_percentage: {
-      type: DataTypes.DECIMAL(5, 2)
-    },
-    total_price: {
-      type: DataTypes.DECIMAL(12, 2)
-    },
   }, {
     tableName: 'goods_receipt_items',
     timestamps: false,
   });
+
+
+ GoodsReceiptItem.associate = (models) => {
+  GoodsReceiptItem.belongsTo(models.GoodsReceipt, {
+    foreignKey: 'goods_receipt_id',   // keep this
+    targetKey: 'id',                  // change this to primary key of GoodsReceipt
+  });
+};
+
+
 
   return GoodsReceiptItem;
 };

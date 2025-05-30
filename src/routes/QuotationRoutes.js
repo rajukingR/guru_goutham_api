@@ -7,6 +7,8 @@ import {
   deleteQuotation
 } from '../controllers/quotationController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
 router.post('/create', createQuotation);

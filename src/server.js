@@ -17,6 +17,13 @@ import QuotationRoutes from './routes/QuotationRoutes.js';
 import OrderRoutes from './routes/OrderRoutes.js';
 import deliveryChallansRoutes from './routes/deliveryChallansRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
+import grnRoutes from './routes/grnRoutes.js';
+import rolesRoutes from './routes/rolesRoutes.js';
+import branchesRoutes from './routes/branchesRoutes.js';
+import clientsRoutes from './routes/clientsRoutes.js';
+import contactTypeRoutes from './routes/contactTypeRoutes.js';
+import taxTypeRoutes from './routes/taxTypeRoutes.js';
+import purchaseRequestsRoutes from './routes/purchaseRequestsRoutes.js';
 
 
 dotenv.config();
@@ -25,7 +32,13 @@ const app = express();
 
 //**  Middlewares **//
 app.use(express.json()); 
-app.use(cors()); 
+
+app.use(cors({
+  origin: 'http://localhost:5173',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  credentials: true, // if you are using cookies or auth headers
+}));
+
 app.use(morgan('dev'));
 app.use(helmet());
 
@@ -47,6 +60,13 @@ app.use('/api/quotations', QuotationRoutes);
 app.use('/api/orders', OrderRoutes);
 app.use('/api/delivery-challans', deliveryChallansRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/grns', grnRoutes);
+app.use('/api/roles', rolesRoutes);
+app.use('/api/branches', branchesRoutes);
+app.use('/api/clients', clientsRoutes);
+app.use('/api/contact-types', contactTypeRoutes);
+app.use('/api/tax-types', taxTypeRoutes);
+app.use('/api/purchase-requests', purchaseRequestsRoutes);
 
 
 const PORT = process.env.PORT || 5000;

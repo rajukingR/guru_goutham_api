@@ -65,6 +65,10 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+    status: {
+      type: DataTypes.ENUM('Active', 'Inactive'),
+      defaultValue: 'Active'
+    },
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW

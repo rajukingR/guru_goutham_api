@@ -1,65 +1,75 @@
 import db from "../models/index.js";
+
 const {
-    Lead,
-    Product,
-    Contact
+  Lead,
+  Product,
+  Contact,
+  LeadProduct // 👈 Make sure this is imported!
 } = db;
 
-// Create a new Lead
+
 export const createLead = async (req, res) => {
-    try {
-        const {
-            lead_id,
-            lead_title,
-            transaction_type,
-            lead_source,
-            source_of_enquiry,
-            rental_duration_months,
-            rental_start_date,
-            rental_end_date,
-            lead_date,
-            owner,
-            remarks,
-            lead_generated_by,
-            is_active,
-            contact_id,
-            product_ids
-        } = req.body;
+  try {
+    const {
+      lead_id,
+      lead_title,
+      transaction_type,
+      lead_source,
+      source_of_enquiry,
+      rental_duration_months,
+      rental_start_date,
+      rental_end_date,
+      lead_date,
+      owner,
+      remarks,
+      lead_generated_by,
+      is_active,
+      contact_id,
+      selected_products
+    } = req.body;
 
-        const newLead = await Lead.create({
-            lead_id,
-            lead_title,
-            transaction_type,
-            lead_source,
-            source_of_enquiry,
-            rental_duration_months,
-            rental_start_date,
-            rental_end_date,
-            lead_date,
-            owner,
-            remarks,
-            lead_generated_by,
-            is_active,
-            contact_id
-        });
+    const newLead = await Lead.create({
+      lead_id,
+      lead_title,
+      transaction_type,
+      lead_source,
+      source_of_enquiry,
+      rental_duration_months,
+      rental_start_date,
+      rental_end_date,
+      lead_date,
+      owner,
+      remarks,
+      lead_generated_by,
+      is_active,
+      contact_id
+    });
 
-        // Associate selected products with lead
-        if (product_ids && product_ids.length > 0) {
-            await newLead.setProducts(product_ids);
-        }
+    if (Array.isArray(selected_products) && selected_products.length > 0) {
+      const leadProductsData = selected_products.map((product) => ({
+        lead_id: newLead.id,
+        product_id: product.product_id,
+        product_name: product.product_name,
+        quantity: product.quantity
+      }));
 
-        res.status(201).json({
-            message: "Lead created successfully",
-            lead: newLead
-        });
-    } catch (error) {
-        console.error("Error creating lead:", error);
-        res.status(500).json({
-            message: "Error creating lead",
-            error
-        });
+      await db.LeadProduct.bulkCreate(leadProductsData); // <- make sure `db.LeadProduct` is defined
     }
+
+    res.status(201).json({
+      message: "Lead created successfully",
+      lead: newLead
+    });
+  } catch (error) {
+    console.error("Error creating lead:", error);
+    res.status(500).json({
+      message: "Error creating lead",
+      error
+    });
+  }
 };
+
+
 
 // Get all Leads
 export const getAllLeads = async (req, res) => {
@@ -118,65 +128,72 @@ export const getLeadById = async (req, res) => {
 
 // Update a Lead
 export const updateLead = async (req, res) => {
-    try {
-        const lead = await Lead.findByPk(req.params.id);
-        if (!lead) {
-            return res.status(404).json({
-                message: "Lead not found"
-            });
-        }
-
-        const {
-            lead_id,
-            lead_title,
-            transaction_type,
-            lead_source,
-            source_of_enquiry,
-            rental_duration_months,
-            rental_start_date,
-            rental_end_date,
-            lead_date,
-            owner,
-            remarks,
-            lead_generated_by,
-            is_active,
-            contact_id,
-            product_ids
-        } = req.body;
-
-        await lead.update({
-            lead_id,
-            lead_title,
-            transaction_type,
-            lead_source,
-            source_of_enquiry,
-            rental_duration_months,
-            rental_start_date,
-            rental_end_date,
-            lead_date,
-            owner,
-            remarks,
-            lead_generated_by,
-            is_active,
-            contact_id
-        });
-
-        // Update product associations
-        if (product_ids && Array.isArray(product_ids)) {
-            await lead.setProducts(product_ids);
-        }
-
-        res.status(200).json({
-            message: "Lead updated successfully",
-            lead
-        });
-    } catch (error) {
-        console.error("Error updating lead:", error);
-        res.status(500).json({
-            message: "Error updating lead",
-            error
-        });
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found" });
     }
+
+    const {
+      lead_id,
+      lead_title,
+      transaction_type,
+      lead_source,
+      source_of_enquiry,
+      rental_duration_months,
+      rental_start_date,
+      rental_end_date,
+      lead_date,
+      owner,
+      remarks,
+      lead_generated_by,
+      is_active,
+      contact_id,
+      selected_products
+    } = req.body;
+
+    // Update the lead data
+    await lead.update({
+      lead_id,
+      lead_title,
+      transaction_type,
+      lead_source,
+      source_of_enquiry,
+      rental_duration_months,
+      rental_start_date,
+      rental_end_date,
+      lead_date,
+      owner,
+      remarks,
+      lead_generated_by,
+      is_active,
+      contact_id
+    });
+
+    // 🔄 Update the lead_products table
+    if (Array.isArray(selected_products)) {
+      // First, remove old associations
+      await LeadProduct.destroy({ where: { lead_id: lead.id } });
+
+      // Then insert new ones
+      const leadProductsData = selected_products.map((product) => ({
+        lead_id: lead.id,
+        product_id: product.product_id,
+        product_name: product.product_name,
+        quantity: product.quantity
+      }));
+
+      await LeadProduct.bulkCreate(leadProductsData);
+    }
+
+    res.status(200).json({
+      message: "Lead updated successfully",
+      lead
+    });
+  } catch (error) {
+    console.error("Error updating lead:", error);
+    res.status(500).json({ message: "Error updating lead", error });
+  }
 };
 
 // Delete a Lead

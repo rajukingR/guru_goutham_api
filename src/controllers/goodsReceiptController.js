@@ -2,6 +2,7 @@ import db from '../models/index.js';
 
 const GoodsReceipt = db.GoodsReceipt;
 const GoodsReceiptItem = db.GoodsReceiptItem;
+const Product = db.Product; 
 
 // Create a new Goods Receipt with Items
 export const createGoodsReceipt = async (req, res) => {
@@ -25,7 +26,7 @@ export const createGoodsReceipt = async (req, res) => {
       return res.status(400).json({ message: "Goods Receipt ID already exists." });
     }
 
-    // Create receipt
+    // Create main goods receipt
     const receipt = await GoodsReceipt.create({
       goods_receipt_id,
       vendor_invoice_number,
@@ -38,16 +39,13 @@ export const createGoodsReceipt = async (req, res) => {
       description
     });
 
-    // Bulk create items
+    // Bulk create receipt items with actual `receipt.id` as foreign key
     if (items.length > 0) {
       const receiptItems = items.map(item => ({
-        goods_receipt_id,
+        goods_receipt_id: receipt.id, // ✅ Use the actual DB ID
         product_id: item.product_id,
         product_name: item.product_name,
         quantity: item.quantity,
-        price_per_unit: item.price_per_unit,
-        gst_percentage: item.gst_percentage,
-        total_price: item.total_price
       }));
       await GoodsReceiptItem.bulkCreate(receiptItems);
     }
@@ -59,11 +57,12 @@ export const createGoodsReceipt = async (req, res) => {
   }
 };
 
+
 // Get all Goods Receipts
 export const getAllGoodsReceipts = async (req, res) => {
   try {
     const receipts = await GoodsReceipt.findAll({
-      include: [{ model: GoodsReceiptItem, as: 'items' }]
+      include: [{ model: GoodsReceiptItem, as: 'selected_products' }]
     });
     res.status(200).json(receipts);
   } catch (error) {
@@ -77,7 +76,7 @@ export const getGoodsReceiptById = async (req, res) => {
   try {
     const { id } = req.params;
     const receipt = await GoodsReceipt.findByPk(id, {
-      include: [{ model: GoodsReceiptItem, as: 'items' }]
+      include: [{ model: GoodsReceiptItem, as: 'selected_products' }]
     });
 
     if (!receipt) return res.status(404).json({ message: "Goods receipt not found" });
@@ -88,6 +87,56 @@ export const getGoodsReceiptById = async (req, res) => {
     res.status(500).json({ message: "Error fetching goods receipt", error });
   }
 };
+
+
+export const getApprovedProductSummary = async (req, res) => {
+  try {
+    // Step 1: Get all approved goods_receipt IDs
+    const approvedReceipts = await GoodsReceipt.findAll({
+      where: { goods_receipt_status: 'Approved' },
+      attributes: ['id'],
+    });
+
+    const approvedReceiptIds = approvedReceipts.map(r => r.id);
+
+    // Step 2: Get all items from approved receipts
+    const receiptItems = await GoodsReceiptItem.findAll({
+      where: { goods_receipt_id: approvedReceiptIds },
+      attributes: ['product_id', 'quantity'],
+    });
+
+    // Step 3: Group by product_id and sum quantities
+    const quantityMap = {};
+
+    receiptItems.forEach(item => {
+      const productId = item.product_id;
+      const qty = item.quantity || 0;
+      if (quantityMap[productId]) {
+        quantityMap[productId] += qty;
+      } else {
+        quantityMap[productId] = qty;
+      }
+    });
+
+    // Step 4: Fetch product details for each grouped product_id
+    const result = await Promise.all(
+      Object.entries(quantityMap).map(async ([productId, totalQty]) => {
+        const product = await Product.findByPk(productId);
+        return {
+          product_id: productId,
+          total_quantity: totalQty,
+          product: product ? product.toJSON() : null,
+        };
+      })
+    );
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error in getApprovedProductSummary:", error);
+    res.status(500).json({ message: "Internal server error", error });
+  }
+};
+
 
 // Update a Goods Receipt
 export const updateGoodsReceipt = async (req, res) => {

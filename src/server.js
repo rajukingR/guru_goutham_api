@@ -25,6 +25,10 @@ import contactTypeRoutes from './routes/contactTypeRoutes.js';
 import taxTypeRoutes from './routes/taxTypeRoutes.js';
 import purchaseRequestsRoutes from './routes/purchaseRequestsRoutes.js';
 import brandRoutes from './routes/brandRoutes.js';
+import productCategoryRoutes from './routes/productCategoryRoutes.js';
+import stockLocationRoutes from './routes/stockLocationRoutes.js';
+import gradeRoutes from './routes/gradeRoutes.js';
+import assetRoutes from './routes/assetRoutes.js';
 
 dotenv.config();
 
@@ -68,6 +72,10 @@ app.use('/api/contact-types', contactTypeRoutes);
 app.use('/api/tax-types', taxTypeRoutes);
 app.use('/api/purchase-requests', purchaseRequestsRoutes);
 app.use('/api/brand', brandRoutes);
+app.use('/api/product-categories', productCategoryRoutes);
+app.use("/api/stock-locations", stockLocationRoutes);
+app.use('/api/grades', gradeRoutes);
+app.use('/api/assets', assetRoutes);
 
 
 const PORT = process.env.PORT || 5000;

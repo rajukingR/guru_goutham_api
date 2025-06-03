@@ -95,6 +95,35 @@ export const getAllLeads = async (req, res) => {
     }
 };
 
+export const getAllLeadsActived = async (req, res) => {
+  try {
+    const leads = await Lead.findAll({
+      where: {
+        is_active: true
+      },
+      include: [
+        {
+          model: Contact,
+          as: 'contact'
+        },
+        {
+          model: Product,
+          as: 'products'
+        }
+      ]
+    });
+
+    res.status(200).json(leads);
+  } catch (error) {
+    console.error("Error fetching active leads:", error);
+    res.status(500).json({
+      message: "Error fetching active leads",
+      error
+    });
+  }
+};
+
+
 // Get a single Lead by ID
 export const getLeadById = async (req, res) => {
     try {

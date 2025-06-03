@@ -17,5 +17,10 @@ export default (sequelize, DataTypes) => {
         timestamps: false,
     });
 
+
+    OrderAddress.associate = models => {
+    OrderAddress.belongsTo(models.Order, { foreignKey: 'order_id' });
+  };
+  
     return OrderAddress;
 };

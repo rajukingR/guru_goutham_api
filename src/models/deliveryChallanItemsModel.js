@@ -37,5 +37,12 @@ export default (sequelize, DataTypes) => {
     timestamps: false,
   });
 
+  DeliveryChallanItem.associate = (models) => {
+  DeliveryChallanItem.belongsTo(models.DeliveryChallan, {
+    foreignKey: 'challan_id',
+    as: 'challan',
+  });
+};
+
   return DeliveryChallanItem;
 };

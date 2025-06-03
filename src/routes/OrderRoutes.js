@@ -4,7 +4,8 @@ import {
   getAllOrders,
   getOrderById,
   updateOrder,
-  deleteOrder
+  deleteOrder,
+  getAllOrdersApproved
 } from '../controllers/OrderControllerCrm.js';
 
 import authMiddleware from "../middlewares/authMiddleware.js";
@@ -14,6 +15,7 @@ const router = express.Router();
 
 router.post('/create', createOrder);
 router.get('/', getAllOrders);
+router.get('/order-approved', getAllOrdersApproved);
 router.get('/:id', getOrderById);
 router.put('/:id', updateOrder);
 router.delete('/:id', deleteOrder);

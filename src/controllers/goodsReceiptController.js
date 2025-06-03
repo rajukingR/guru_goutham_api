@@ -1,8 +1,13 @@
 import db from '../models/index.js';
 
-const GoodsReceipt = db.GoodsReceipt;
-const GoodsReceiptItem = db.GoodsReceiptItem;
-const Product = db.Product; 
+const {
+  GoodsReceipt,
+  GoodsReceiptItem,
+  Product,
+  Order,
+  OrderItem,
+  ProductTemplete
+} = db;
 
 // Create a new Goods Receipt with Items
 export const createGoodsReceipt = async (req, res) => {
@@ -88,10 +93,8 @@ export const getGoodsReceiptById = async (req, res) => {
   }
 };
 
-
 export const getApprovedProductSummary = async (req, res) => {
   try {
-    // Step 1: Get all approved goods_receipt IDs
     const approvedReceipts = await GoodsReceipt.findAll({
       where: { goods_receipt_status: 'Approved' },
       attributes: ['id'],
@@ -99,43 +102,101 @@ export const getApprovedProductSummary = async (req, res) => {
 
     const approvedReceiptIds = approvedReceipts.map(r => r.id);
 
-    // Step 2: Get all items from approved receipts
     const receiptItems = await GoodsReceiptItem.findAll({
       where: { goods_receipt_id: approvedReceiptIds },
       attributes: ['product_id', 'quantity'],
     });
 
-    // Step 3: Group by product_id and sum quantities
     const quantityMap = {};
-
     receiptItems.forEach(item => {
       const productId = item.product_id;
       const qty = item.quantity || 0;
-      if (quantityMap[productId]) {
-        quantityMap[productId] += qty;
-      } else {
-        quantityMap[productId] = qty;
+      quantityMap[productId] = (quantityMap[productId] || 0) + qty;
+    });
+
+    const approvedOrders = await Order.findAll({
+      where: { order_status: 'Approved' },
+      attributes: ['id', 'transaction_type'],
+    });
+
+    const orderIdTypeMap = {};
+    approvedOrders.forEach(order => {
+      orderIdTypeMap[order.id] = order.transaction_type;
+    });
+
+    const approvedOrderIds = approvedOrders.map(o => o.id);
+
+    const orderItems = await OrderItem.findAll({
+      where: { order_id: approvedOrderIds },
+      attributes: ['order_id', 'product_id', 'requested_quantity'],
+    });
+
+    const usedQuantityMap = {};
+    orderItems.forEach(item => {
+      const productId = item.product_id;
+      const qty = item.requested_quantity || 0;
+      const type = orderIdTypeMap[item.order_id];
+
+      if (!usedQuantityMap[productId]) {
+        usedQuantityMap[productId] = { rented_qty: 0, buy_qty: 0 };
+      }
+
+      if (type === 'Rent') {
+        usedQuantityMap[productId].rented_qty += qty;
+      } else if (type === 'Buy') {
+        usedQuantityMap[productId].buy_qty += qty;
       }
     });
 
-    // Step 4: Fetch product details for each grouped product_id
+    let totalRentedQty = 0;
+    let totalBuyQty = 0;
+    let grandTotalAmount = 0;
+
     const result = await Promise.all(
       Object.entries(quantityMap).map(async ([productId, totalQty]) => {
-        const product = await Product.findByPk(productId);
+        const productTemplete = await ProductTemplete.findByPk(productId);
+        const used = usedQuantityMap[productId] || { rented_qty: 0, buy_qty: 0 };
+        const availableQty = totalQty - (used.rented_qty + used.buy_qty);
+
+        const purchasePrice = parseFloat(productTemplete?.purchase_price || 0);
+        const totalValue = totalQty * purchasePrice;
+        const usedRentValue = used.rented_qty * purchasePrice;
+        const usedBuyValue = used.buy_qty * purchasePrice;
+
+        totalRentedQty += used.rented_qty;
+        totalBuyQty += used.buy_qty;
+        grandTotalAmount += totalValue;
+
         return {
-          product_id: productId,
+          product_id: Number(productId),
           total_quantity: totalQty,
-          product: product ? product.toJSON() : null,
+          rented_qty: used.rented_qty,
+          buy_qty: used.buy_qty,
+          available_quantity: availableQty,
+          purchase_price: purchasePrice,
+          total_value: totalValue,
+          used_rent_value: usedRentValue,
+          used_buy_value: usedBuyValue,
+          product: productTemplete ? productTemplete.toJSON() : null,
         };
       })
     );
 
-    res.status(200).json(result);
+    res.status(200).json({
+      summary: {
+        total_rented_qty: totalRentedQty,
+        total_buy_qty: totalBuyQty,
+        grand_total_stock_value: grandTotalAmount,
+      },
+      products: result,
+    });
   } catch (error) {
     console.error("Error in getApprovedProductSummary:", error);
     res.status(500).json({ message: "Internal server error", error });
   }
 };
+
+
 
 
 // Update a Goods Receipt

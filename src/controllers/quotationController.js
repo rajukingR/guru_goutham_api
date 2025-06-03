@@ -1,6 +1,8 @@
 import db from '../models/index.js';
 const Quotation = db.Quotation;
 const QuotationItem = db.QuotationItem;
+const Product = db.Product;
+const Lead = db.Lead;
 
 // Create a new quotation
 export const createQuotation = async (req, res) => {
@@ -16,7 +18,7 @@ export const createQuotation = async (req, res) => {
       remarks,
       quotation_generated_by,
       status,
-      items // expected to be an array of quotation items
+      items
     } = req.body;
 
     const quotation = await Quotation.create({
@@ -33,11 +35,18 @@ export const createQuotation = async (req, res) => {
     });
 
     if (items && Array.isArray(items)) {
-      const itemsWithQuotationId = items.map(item => ({
-        ...item,
-        quotation_id: quotation.id
-      }));
-      await QuotationItem.bulkCreate(itemsWithQuotationId);
+      const itemsWithProductNames = await Promise.all(
+        items.map(async (item) => {
+          const product = await Product.findByPk(item.product_id);
+          return {
+            ...item,
+            quotation_id: quotation.id,
+            product_name: product ? product.name : null 
+          };
+        })
+      );
+
+      await QuotationItem.bulkCreate(itemsWithProductNames);
     }
 
     res.status(201).json({ message: 'Quotation created successfully', quotation });
@@ -47,10 +56,18 @@ export const createQuotation = async (req, res) => {
   }
 };
 
+
 // Get all quotations
 export const getAllQuotations = async (req, res) => {
   try {
-    const quotations = await Quotation.findAll({ include: [QuotationItem] });
+    const quotations = await Quotation.findAll({
+      include: [
+        {
+          model: QuotationItem,
+          as: 'items', // use the same alias as defined in the model
+        }
+      ]
+    });
     res.status(200).json(quotations);
   } catch (error) {
     console.error(error);
@@ -58,11 +75,37 @@ export const getAllQuotations = async (req, res) => {
   }
 };
 
+
+// Get only Approved quotations
+export const getAllQuotationsApproved = async (req, res) => {
+  try {
+    const quotations = await Quotation.findAll({
+      where: { status: 'Approved' }, // Filter by status
+      include: [
+        {
+          model: QuotationItem,
+          as: 'items', // Make sure this alias matches your association
+        }
+      ]
+    });
+    res.status(200).json(quotations);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error fetching approved quotations', error });
+  }
+};
+
+
 // Get quotation by ID
 export const getQuotationById = async (req, res) => {
   try {
     const { id } = req.params;
-    const quotation = await Quotation.findByPk(id, { include: [QuotationItem] });
+    const quotation = await Quotation.findByPk(id, { include: [
+        {
+          model: QuotationItem,
+          as: 'items', // use the same alias as defined in the model
+        }
+      ] });
 
     if (!quotation) return res.status(404).json({ message: 'Quotation not found' });
 

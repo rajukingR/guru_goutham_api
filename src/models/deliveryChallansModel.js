@@ -114,5 +114,13 @@ export default (sequelize, DataTypes) => {
     timestamps: false,
   });
 
+  DeliveryChallan.associate = (models) => {
+  DeliveryChallan.hasMany(models.DeliveryChallanItem, {
+    foreignKey: 'challan_id',
+    as: 'items',
+  });
+};
+
+
   return DeliveryChallan;
 };

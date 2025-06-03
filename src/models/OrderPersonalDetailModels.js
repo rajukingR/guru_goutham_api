@@ -9,13 +9,20 @@ export default (sequelize, DataTypes) => {
         first_name: DataTypes.STRING,
         last_name: DataTypes.STRING,
         email: DataTypes.STRING,
-        phone: DataTypes.STRING,
-        company_name: DataTypes.STRING,
-        industry: DataTypes.STRING,
+        phone_number: DataTypes.STRING,
+        gst_number: {
+            type: DataTypes.STRING
+        }
     }, {
         tableName: 'order_customers',
         timestamps: false,
     });
+
+    OrderPersonalDetail.associate = models => {
+        OrderPersonalDetail.belongsTo(models.Order, {
+            foreignKey: 'order_id'
+        });
+    };
 
     return OrderPersonalDetail;
 };

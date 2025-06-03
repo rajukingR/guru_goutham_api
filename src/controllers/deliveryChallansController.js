@@ -89,7 +89,10 @@ export const createDeliveryChallan = async (req, res) => {
 export const getAllDeliveryChallans = async (req, res) => {
   try {
     const deliveryChallans = await DeliveryChallan.findAll({
-      include: [DeliveryChallanItem]
+      include: [{
+        model: DeliveryChallanItem,
+        as: 'items', // <-- use the alias
+      }],
     });
     res.status(200).json(deliveryChallans);
   } catch (error) {
@@ -102,18 +105,46 @@ export const getAllDeliveryChallans = async (req, res) => {
 export const getDeliveryChallanById = async (req, res) => {
   try {
     const { id } = req.params;
+
     const deliveryChallan = await DeliveryChallan.findByPk(id, {
-      include: [DeliveryChallanItem]
+      include: [
+        {
+          model: DeliveryChallanItem,
+          as: 'items',
+        },
+      ],
     });
 
-    if (!deliveryChallan) return res.status(404).json({ message: 'Delivery Challan not found' });
+    if (!deliveryChallan) {
+      return res.status(404).json({ message: 'Delivery Challan not found' });
+    }
 
-    res.status(200).json(deliveryChallan);
+    // Calculate totals
+    const totalQuantity = deliveryChallan.items.reduce(
+      (sum, item) => sum + item.quantity,
+      0
+    );
+
+    const totalPrice = deliveryChallan.items.reduce(
+      (sum, item) => sum + parseFloat(item.total_price || 0),
+      0
+    );
+
+    // Add totals to the response object
+    const response = {
+      ...deliveryChallan.toJSON(),
+      totalQuantity,
+      totalPrice,
+    };
+
+    res.status(200).json(response);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error fetching delivery challan', error });
   }
 };
+
+
 
 // Update Delivery Challan
 export const updateDeliveryChallan = async (req, res) => {

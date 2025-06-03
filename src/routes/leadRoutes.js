@@ -4,7 +4,8 @@ import {
   getAllLeads,
   getLeadById,
   updateLead,
-  deleteLead
+  deleteLead,
+  getAllLeadsActived
 } from '../controllers/leadController.js';
 
 import authMiddleware from "../middlewares/authMiddleware.js";
@@ -13,6 +14,8 @@ const router = express.Router();
 
 router.post('/create', createLead);
 router.get('/', getAllLeads);
+router.get('/active-leads', getAllLeadsActived);
+
 router.get('/:id', getLeadById);
 router.put('/:id', updateLead);
 router.delete('/:id', deleteLead);

@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -24,6 +25,13 @@ import clientsRoutes from './routes/clientsRoutes.js';
 import contactTypeRoutes from './routes/contactTypeRoutes.js';
 import taxTypeRoutes from './routes/taxTypeRoutes.js';
 import purchaseRequestsRoutes from './routes/purchaseRequestsRoutes.js';
+import productTempleteRoutes from './routes/productTempleteRoutes.js';
+import productCategoriesRoutes from './routes/productCategoriesRoutes.js';
+import brandRoutes from './routes/brandRoutes.js';
+
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 
 dotenv.config();
@@ -47,6 +55,8 @@ db.authenticate()
   .then(() => console.log('Database connected successfully'))
   .catch(err => console.log('Database connection failed:', err));
 
+app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
+
 app.use('/api', parentRouter)
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
@@ -67,6 +77,9 @@ app.use('/api/clients', clientsRoutes);
 app.use('/api/contact-types', contactTypeRoutes);
 app.use('/api/tax-types', taxTypeRoutes);
 app.use('/api/purchase-requests', purchaseRequestsRoutes);
+app.use('/api/product-templete', productTempleteRoutes);
+app.use('/api/product-categories', productCategoriesRoutes);
+app.use('/api/product-brands', brandRoutes);
 
 
 const PORT = process.env.PORT || 5000;

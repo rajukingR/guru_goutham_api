@@ -13,17 +13,11 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-    requested_quantity: {
-      type: DataTypes.INTEGER,
-    },
     quotation_quantity: {
       type: DataTypes.INTEGER,
     },
-    rental_price_per_piece: {
-      type: DataTypes.DECIMAL(10, 2),
-    },
-    remark: {
-      type: DataTypes.TEXT,
+    product_name: {
+      type: DataTypes.STRING,
     },
     created_at: {
       type: DataTypes.DATE,
@@ -37,6 +31,16 @@ export default (sequelize, DataTypes) => {
     tableName: 'quotation_items',
     timestamps: false,
   });
+
+
+  // Define association
+  QuotationItem.associate = (models) => {
+    QuotationItem.belongsTo(models.Quotation, {
+      foreignKey: 'quotation_id',
+      as: 'quotation',
+    });
+  };
+
 
   return QuotationItem;
 };

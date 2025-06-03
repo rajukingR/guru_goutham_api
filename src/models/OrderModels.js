@@ -37,5 +37,14 @@ export default (sequelize, DataTypes) => {
         timestamps: false,
     });
 
+
+    
+  Order.associate = models => {
+    Order.hasMany(models.OrderItem, { foreignKey: 'order_id', as: 'items' });
+    Order.hasOne(models.OrderAddress, { foreignKey: 'order_id', as: 'address' });
+    Order.hasOne(models.OrderPersonalDetail, { foreignKey: 'order_id', as: 'personalDetails' });
+  };
+
+  
     return Order;
 };

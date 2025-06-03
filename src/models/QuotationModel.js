@@ -36,8 +36,8 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
     },
     status: {
-      type: DataTypes.ENUM('Active', 'Inactive'),
-      defaultValue: 'Active',
+      type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
+      defaultValue: 'Pending',
     },
     created_at: {
       type: DataTypes.DATE,
@@ -51,6 +51,15 @@ export default (sequelize, DataTypes) => {
     tableName: 'quotations',
     timestamps: false,
   });
+
+
+   Quotation.associate = (models) => {
+    Quotation.hasMany(models.QuotationItem, {
+      foreignKey: 'quotation_id',
+      as: 'items',
+    });
+  };
+
 
   return Quotation;
 };

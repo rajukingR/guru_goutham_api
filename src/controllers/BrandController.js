@@ -20,7 +20,7 @@ export const createBrand = async (req, res) => {
   }
 };
 
-// Read all
+// Read allRAJU
 export const getAllBrands = async (req, res) => {
   try {
     const brands = await Brand.findAll();

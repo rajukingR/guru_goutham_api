@@ -13,7 +13,7 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 const router = express.Router();
 
 router.post('/create', createPurchaseQuotation);
-router.get('/', authMiddleware, getAllPurchaseQuotations);
+router.get('/', getAllPurchaseQuotations);
 router.get('/approved', getApprovedPurchaseQuotations );
 router.get('/:id', getPurchaseQuotationById);
 router.put('/:id', updatePurchaseQuotation);

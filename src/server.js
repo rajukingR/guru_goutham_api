@@ -28,6 +28,7 @@ import purchaseRequestsRoutes from './routes/purchaseRequestsRoutes.js';
 import productTempleteRoutes from './routes/productTempleteRoutes.js';
 import productCategoriesRoutes from './routes/productCategoriesRoutes.js';
 import brandRoutes from './routes/brandRoutes.js';
+import stockLocationRoutes from './routes/stockLocationRoutes.js';
 
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
@@ -80,6 +81,7 @@ app.use('/api/purchase-requests', purchaseRequestsRoutes);
 app.use('/api/product-templete', productTempleteRoutes);
 app.use('/api/product-categories', productCategoriesRoutes);
 app.use('/api/product-brands', brandRoutes);
+app.use('/api/stock-location', stockLocationRoutes);
 
 
 const PORT = process.env.PORT || 5000;

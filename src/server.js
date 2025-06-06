@@ -29,6 +29,8 @@ import productTempleteRoutes from './routes/productTempleteRoutes.js';
 import productCategoriesRoutes from './routes/productCategoriesRoutes.js';
 import brandRoutes from './routes/brandRoutes.js';
 import stockLocationRoutes from './routes/stockLocationRoutes.js';
+import roleRoutes from './routes/roleRoutes.js';
+import taxListRoutes from './routes/taxListRoutes.js';
 
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
@@ -82,10 +84,12 @@ app.use('/api/product-templete', productTempleteRoutes);
 app.use('/api/product-categories', productCategoriesRoutes);
 app.use('/api/product-brands', brandRoutes);
 app.use('/api/stock-location', stockLocationRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/tax-list', taxListRoutes);
 
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));                    
 
 
 export default app;

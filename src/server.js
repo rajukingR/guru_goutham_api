@@ -20,7 +20,6 @@ import deliveryChallansRoutes from './routes/deliveryChallansRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
 import grnRoutes from './routes/grnRoutes.js';
 import rolesRoutes from './routes/rolesRoutes.js';
-import branchesRoutes from './routes/branchesRoutes.js';
 import clientsRoutes from './routes/clientsRoutes.js';
 import contactTypeRoutes from './routes/contactTypeRoutes.js';
 import taxTypeRoutes from './routes/taxTypeRoutes.js';
@@ -31,6 +30,8 @@ import brandRoutes from './routes/brandRoutes.js';
 import stockLocationRoutes from './routes/stockLocationRoutes.js';
 import roleRoutes from './routes/roleRoutes.js';
 import taxListRoutes from './routes/taxListRoutes.js';
+import branchRoutes from "./routes/branchRoutes.js";
+
 
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
@@ -75,7 +76,6 @@ app.use('/api/delivery-challans', deliveryChallansRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/grns', grnRoutes);
 app.use('/api/roles', rolesRoutes);
-app.use('/api/branches', branchesRoutes);
 app.use('/api/clients', clientsRoutes);
 app.use('/api/contact-types', contactTypeRoutes);
 app.use('/api/tax-types', taxTypeRoutes);
@@ -86,7 +86,7 @@ app.use('/api/product-brands', brandRoutes);
 app.use('/api/stock-location', stockLocationRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/tax-list', taxListRoutes);
-
+app.use("/api/branches", branchRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));                    

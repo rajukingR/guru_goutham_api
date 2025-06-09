@@ -37,9 +37,10 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+   
     payment_type: {
-      type: DataTypes.STRING,
-      allowNull: true
+      type: DataTypes.ENUM('Prepaid', 'Approved', 'Postpaid'),
+      defaultValue: 'Prepaid',
     },
     address: {
       type: DataTypes.JSON,

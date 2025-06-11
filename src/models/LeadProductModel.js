@@ -26,5 +26,19 @@ export default (sequelize, DataTypes) => {
     timestamps: false
   });
 
+
+  LeadProduct.associate = (models) => {
+  LeadProduct.belongsTo(models.Lead, {
+    foreignKey: 'lead_id',
+    as: 'lead'
+  });
+
+  LeadProduct.belongsTo(models.ProductTemplete, {
+    foreignKey: 'product_id',
+    as: 'product'
+  });
+};
+
+
   return LeadProduct;
 };

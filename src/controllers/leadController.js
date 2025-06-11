@@ -2,7 +2,7 @@ import db from "../models/index.js";
 
 const {
   Lead,
-  Product,
+  ProductTemplete,
   Contact,
   LeadProduct // 👈 Make sure this is imported!
 } = db;
@@ -75,16 +75,24 @@ export const createLead = async (req, res) => {
 export const getAllLeads = async (req, res) => {
     try {
         const leads = await Lead.findAll({
-            include: [{
-                    model: Contact,
-                    as: 'contact'
-                },
-                {
-                    model: Product,
-                    as: 'products'
-                }
-            ]
-        });
+  include: [
+    {
+      model: Contact,
+      as: 'contact'
+    },
+    {
+      model: LeadProduct,
+      as: 'lead_products',
+      include: [
+        {
+          model: ProductTemplete,
+          as: 'product'
+        }
+      ]
+    }
+  ]
+});
+
         res.status(200).json(leads);
     } catch (error) {
         console.error("Error fetching leads:", error);
@@ -98,17 +106,21 @@ export const getAllLeads = async (req, res) => {
 export const getAllLeadsActived = async (req, res) => {
   try {
     const leads = await Lead.findAll({
-      where: {
-        is_active: true
-      },
+      where: { is_active: true },
       include: [
         {
           model: Contact,
           as: 'contact'
         },
         {
-          model: Product,
-          as: 'products'
+          model: LeadProduct,
+          as: 'lead_products',
+          include: [
+            {
+              model: ProductTemplete,
+              as: 'product'
+            }
+          ]
         }
       ]
     });
@@ -124,36 +136,45 @@ export const getAllLeadsActived = async (req, res) => {
 };
 
 
+
 // Get a single Lead by ID
 export const getLeadById = async (req, res) => {
-    try {
-        const lead = await Lead.findByPk(req.params.id, {
-            include: [{
-                    model: Contact,
-                    as: 'contact'
-                },
-                {
-                    model: Product,
-                    as: 'products'
-                }
-            ]
-        });
-
-        if (!lead) {
-            return res.status(404).json({
-                message: "Lead not found"
-            });
+  try {
+    const lead = await Lead.findByPk(req.params.id, {
+      include: [
+        {
+          model: Contact,
+          as: 'contact'
+        },
+        {
+          model: LeadProduct,
+          as: 'lead_products',
+          include: [
+            {
+              model: ProductTemplete,
+              as: 'product'
+            }
+          ]
         }
+      ]
+    });
 
-        res.status(200).json(lead);
-    } catch (error) {
-        console.error("Error fetching lead:", error);
-        res.status(500).json({
-            message: "Error fetching lead",
-            error
-        });
+    if (!lead) {
+      return res.status(404).json({
+        message: "Lead not found"
+      });
     }
+
+    res.status(200).json(lead);
+  } catch (error) {
+    console.error("Error fetching lead:", error);
+    res.status(500).json({
+      message: "Error fetching lead",
+      error
+    });
+  }
 };
+
 
 // Update a Lead
 export const updateLead = async (req, res) => {
@@ -200,20 +221,35 @@ export const updateLead = async (req, res) => {
     });
 
     // 🔄 Update the lead_products table
-    if (Array.isArray(selected_products)) {
-      // First, remove old associations
-      await LeadProduct.destroy({ where: { lead_id: lead.id } });
+    if (Array.isArray(selected_products) && selected_products.length > 0) {
+  const productIds = selected_products.map(p => p.product_id);
 
-      // Then insert new ones
-      const leadProductsData = selected_products.map((product) => ({
-        lead_id: lead.id,
-        product_id: product.product_id,
-        product_name: product.product_name,
-        quantity: product.quantity
-      }));
+  // ✅ Validate all product_ids exist in ProductTemplete
+  const validProducts = await ProductTemplete.findAll({
+    where: { id: productIds },
+    attributes: ['id']
+  });
 
-      await LeadProduct.bulkCreate(leadProductsData);
-    }
+  const validIds = validProducts.map(p => p.id);
+
+  const validLeadProductsData = selected_products
+    .filter(p => validIds.includes(p.product_id))
+    .map((product) => ({
+      lead_id: newLead.id,
+      product_id: product.product_id,
+      product_name: product.product_name,
+      quantity: product.quantity
+    }));
+
+  if (validLeadProductsData.length !== selected_products.length) {
+    return res.status(400).json({
+      message: "One or more selected product IDs are invalid."
+    });
+  }
+
+  await db.LeadProduct.bulkCreate(validLeadProductsData);
+}
+
 
     res.status(200).json({
       message: "Lead updated successfully",

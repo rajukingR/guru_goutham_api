@@ -27,7 +27,7 @@ export default (sequelize, DataTypes) => {
     description: {
       type: DataTypes.TEXT,
     },
-    
+
     selected_products: {
       type: DataTypes.JSON,
     },
@@ -45,6 +45,11 @@ export default (sequelize, DataTypes) => {
   });
 
   PurchaseRequest.associate = models => {
+    PurchaseRequest.hasMany(models.PurchaseRequestItem, {
+      foreignKey: 'purchase_request_id',
+      as: 'items',
+    });
+
     // A purchase request belongs to a supplier
     PurchaseRequest.belongsTo(models.Supplier, {
       foreignKey: 'supplier_id',

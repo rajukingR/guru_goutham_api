@@ -21,6 +21,9 @@ export default (sequelize, DataTypes) => {
     invoice_date: {
       type: DataTypes.DATE,
     },
+    duration: {
+      type: DataTypes.STRING,
+    },
     invoice_due_date: {
       type: DataTypes.DATE,
     },
@@ -89,6 +92,20 @@ export default (sequelize, DataTypes) => {
     tableName: 'invoices',
     timestamps: false,
   });
+
+
+  Invoice.associate = (models) => {
+    Invoice.hasMany(models.InvoiceItem, {
+      foreignKey: 'invoice_id',
+      as: 'items',
+    });
+
+    Invoice.hasOne(models.InvoiceShippingDetail, {
+      foreignKey: 'invoice_id',
+      as: 'shippingDetail',
+    });
+  };
+
 
   return Invoice;
 };

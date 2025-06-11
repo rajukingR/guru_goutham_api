@@ -1,12 +1,10 @@
 import db from "../models/index.js";
-
 const {
   Lead,
   ProductTemplete,
   Contact,
   LeadProduct // 👈 Make sure this is imported!
 } = db;
-
 
 export const createLead = async (req, res) => {
   try {

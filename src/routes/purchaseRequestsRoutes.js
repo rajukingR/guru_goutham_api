@@ -13,7 +13,7 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 const router = express.Router();
 
 router.post('/create', createPurchaseRequest);
-router.get('/', authMiddleware, getAllPurchaseRequests);
+router.get('/', getAllPurchaseRequests);
 router.get('/approved', getApprovedPurchaseRequests);
 
 router.get('/:id', getPurchaseRequestById);

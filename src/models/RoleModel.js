@@ -1,37 +1,16 @@
 export default (sequelize, DataTypes) => {
-  const Branch = sequelize.define('Branch', {
+  const Role = sequelize.define('Role', {
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
     },
-    branch_id: {
-      type: DataTypes.STRING(50),
-      allowNull: false,
-      unique: true,
-    },
-    branch_name: {
+    role_name: {
       type: DataTypes.STRING(100),
       allowNull: false,
     },
-    address: {
+    description: {
       type: DataTypes.TEXT,
-      allowNull: false,
-    },
-    pincode: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
-    },
-    country_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    state_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    city_id: {
-      type: DataTypes.INTEGER,
       allowNull: false,
     },
     is_active: {
@@ -47,9 +26,10 @@ export default (sequelize, DataTypes) => {
       defaultValue: DataTypes.NOW,
     },
   }, {
-    tableName: 'branches',
+    tableName: 'roles',
     timestamps: false,
+    underscored: true,
   });
 
-  return Branch;
+  return Role;
 };

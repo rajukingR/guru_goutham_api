@@ -41,5 +41,13 @@ export default (sequelize, DataTypes) => {
     timestamps: false,
   });
 
+
+  InvoiceShippingDetail.associate = (models) => {
+  InvoiceShippingDetail.belongsTo(models.Invoice, {
+    foreignKey: 'invoice_id',
+    as: 'invoice',
+  });
+};
+
   return InvoiceShippingDetail;
 };

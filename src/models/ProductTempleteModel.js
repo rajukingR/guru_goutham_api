@@ -153,14 +153,13 @@ export default (sequelize, DataTypes) => {
 });
 
 
-  ProductTemplete.associate = (models) => {
-    ProductTemplete.belongsToMany(models.Lead, {
-      through: models.LeadProduct,
-      foreignKey: 'product_id',
-      otherKey: 'lead_id',
-      as: 'leads'
-    });
-  };
+ ProductTemplete.associate = (models) => {
+  ProductTemplete.hasMany(models.LeadProduct, {
+    foreignKey: 'product_id',
+    as: 'lead_products'
+  });
+};
+
 
   return ProductTemplete;
 };

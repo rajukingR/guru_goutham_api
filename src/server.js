@@ -38,21 +38,41 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 
-dotenv.config();
+
+// Load environment variables from appropriate file
+dotenv.config({
+  path:
+    process.env.NODE_ENV === 'production'
+      ? '.env.production'
+      : process.env.NODE_ENV === 'development'
+      ? '.env.development'
+      : '.env',
+});
 
 const app = express();
 
 //**  Middlewares **//
 app.use(express.json()); 
+app.use(helmet());
+
+// CORS setup
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5000',
+  'https://gurugoutham.innogenxsolutions.com',
+];
 
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  credentials: true, // if you are using cookies or auth headers
+  credentials: true,
 }));
 
-app.use(morgan('dev'));
-app.use(helmet());
+// Logging (only in dev)
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
+
 
 
 db.authenticate()

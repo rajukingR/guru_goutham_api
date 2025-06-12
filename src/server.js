@@ -31,6 +31,9 @@ import stockLocationRoutes from './routes/stockLocationRoutes.js';
 import roleRoutes from './routes/roleRoutes.js';
 import taxListRoutes from './routes/taxListRoutes.js';
 import branchRoutes from "./routes/branchRoutes.js";
+import GoodsReturnNoteRoutes from "./routes/GoodsReturnNoteRoutes.js";
+import productServiceRoutes from './routes/ProductServiceRoutes.js';
+
 
 
 import { fileURLToPath } from 'url';
@@ -100,13 +103,15 @@ app.use('/api/clients', clientsRoutes);
 app.use('/api/contact-types', contactTypeRoutes);
 app.use('/api/tax-types', taxTypeRoutes);
 app.use('/api/purchase-requests', purchaseRequestsRoutes);
-app.use('/api/product-templete', productTempleteRoutes);
+app.use('/api/product-templete', productTempleteRoutes);                                               
 app.use('/api/product-categories', productCategoriesRoutes);
 app.use('/api/product-brands', brandRoutes);
 app.use('/api/stock-location', stockLocationRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/tax-list', taxListRoutes);
 app.use("/api/branches", branchRoutes);
+app.use("/api/goods-return-notes", GoodsReturnNoteRoutes);
+app.use('/api/product-services', productServiceRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));                    

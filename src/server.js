@@ -33,6 +33,9 @@ import taxListRoutes from './routes/taxListRoutes.js';
 import branchRoutes from "./routes/branchRoutes.js";
 import GoodsReturnNoteRoutes from "./routes/GoodsReturnNoteRoutes.js";
 import productServiceRoutes from './routes/ProductServiceRoutes.js';
+import assetRoutes from './routes/AssetModificationRoutes.js';
+import CreditNoteRoutes from './routes/CreditNoteRoutes.js';
+import clientRoutes from './routes/clientDetailsRoutes.js';
 
 
 
@@ -112,6 +115,10 @@ app.use('/api/tax-list', taxListRoutes);
 app.use("/api/branches", branchRoutes);
 app.use("/api/goods-return-notes", GoodsReturnNoteRoutes);
 app.use('/api/product-services', productServiceRoutes);
+app.use('/api/asset-modifications', assetRoutes);
+app.use('/api/credit-notes', CreditNoteRoutes);
+app.use('/api/user', clientRoutes);
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));                    

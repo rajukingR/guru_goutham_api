@@ -1,5 +1,6 @@
 import db from '../models/index.js';
-const { DeliveryChallan, DeliveryChallanItem } = db;
+const { DeliveryChallan, DeliveryChallanItem,OrderItem,ProductTemplete  } = db;
+
 
 // Create Delivery Challan
 export const createDeliveryChallan = async (req, res) => {
@@ -106,11 +107,18 @@ export const getDeliveryChallanById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Step 1: Get Delivery Challan with items and their products
     const deliveryChallan = await DeliveryChallan.findByPk(id, {
       include: [
         {
           model: DeliveryChallanItem,
           as: 'items',
+          include: [
+            {
+              model: ProductTemplete,
+              as: 'product',
+            },
+          ],
         },
       ],
     });
@@ -119,32 +127,46 @@ export const getDeliveryChallanById = async (req, res) => {
       return res.status(404).json({ message: 'Delivery Challan not found' });
     }
 
-    // Calculate totals
-    const totalQuantity = deliveryChallan.items.reduce(
-      (sum, item) => sum + item.quantity,
-      0
+    const deliveryChallanData = deliveryChallan.toJSON();
+
+    // Step 2: Add device_ids from OrderItem for each product in the delivery challan
+    const enrichedItems = await Promise.all(
+      deliveryChallanData.items.map(async (item) => {
+        const orderItem = await OrderItem.findOne({
+          where: {
+            order_id: deliveryChallanData.order_id,
+            product_id: item.product_id,
+          },
+        });
+
+        return {
+          ...item,
+          device_ids: orderItem?.device_ids || [],
+        };
+      })
     );
 
-    const totalPrice = deliveryChallan.items.reduce(
+    // Step 3: Calculate totals
+    const totalQuantity = enrichedItems.reduce((sum, item) => sum + item.quantity, 0);
+    const totalPrice = enrichedItems.reduce(
       (sum, item) => sum + parseFloat(item.total_price || 0),
       0
     );
 
-    // Add totals to the response object
+    // Step 4: Final Response
     const response = {
-      ...deliveryChallan.toJSON(),
+      ...deliveryChallanData,
+      items: enrichedItems, // with product and device_ids, no product_details
       totalQuantity,
       totalPrice,
     };
 
     res.status(200).json(response);
   } catch (error) {
-    console.error(error);
+    console.error('Error fetching delivery challan:', error);
     res.status(500).json({ message: 'Error fetching delivery challan', error });
   }
 };
-
-
 
 // Update Delivery Challan
 export const updateDeliveryChallan = async (req, res) => {

@@ -16,6 +16,7 @@ export default (sequelize, DataTypes) => {
         remarks: DataTypes.TEXT,
         order_generated_by: DataTypes.STRING,
         rental_duration: DataTypes.INTEGER,
+        rental_duration_days: DataTypes.INTEGER,
         rental_start_date: DataTypes.DATE,
         rental_end_date: DataTypes.DATE,
         order_date: DataTypes.DATE,
@@ -38,13 +39,22 @@ export default (sequelize, DataTypes) => {
     });
 
 
-    
-  Order.associate = models => {
-    Order.hasMany(models.OrderItem, { foreignKey: 'order_id', as: 'items' });
-    Order.hasOne(models.OrderAddress, { foreignKey: 'order_id', as: 'address' });
-    Order.hasOne(models.OrderPersonalDetail, { foreignKey: 'order_id', as: 'personalDetails' });
-  };
 
-  
+    Order.associate = models => {
+        Order.hasMany(models.OrderItem, {
+            foreignKey: 'order_id',
+            as: 'items'
+        });
+        Order.hasOne(models.OrderAddress, {
+            foreignKey: 'order_id',
+            as: 'address'
+        });
+        Order.hasOne(models.OrderPersonalDetail, {
+            foreignKey: 'order_id',
+            as: 'personalDetails'
+        });
+    };
+
+
     return Order;
 };

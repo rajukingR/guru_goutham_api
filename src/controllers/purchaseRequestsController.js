@@ -24,6 +24,10 @@ export const createPurchaseRequest = async (req, res) => {
       return res.status(400).json({ message: 'All required fields must be provided' });
     }
 
+    const total_requested_quantity = Array.isArray(selected_products)
+      ? selected_products.reduce((sum, item) => sum + (item.quantity || 0), 0)
+      : null;
+
     const purchaseRequest = await PurchaseRequest.create({
       purchase_request_id,
       purchase_request_date,
@@ -33,6 +37,7 @@ export const createPurchaseRequest = async (req, res) => {
       supplier_id,
       description,
       selected_products,
+      total_requested_quantity,
       created_at: created_at || new Date(),
       updated_at: updated_at || new Date()
     });
@@ -46,6 +51,7 @@ export const createPurchaseRequest = async (req, res) => {
     res.status(500).json({ message: 'Error creating purchase request', error });
   }
 };
+
 
 export const getAllPurchaseRequests = async (req, res) => {
   try {
@@ -234,6 +240,10 @@ export const updatePurchaseRequest = async (req, res) => {
       return res.status(404).json({ message: 'Purchase request not found' });
     }
 
+    const total_requested_quantity = Array.isArray(selected_products)
+      ? selected_products.reduce((sum, item) => sum + (item.quantity || 0), 0)
+      : null;
+
     await purchaseRequest.update({
       purchase_request_id,
       purchase_request_date,
@@ -243,6 +253,7 @@ export const updatePurchaseRequest = async (req, res) => {
       supplier_id,
       description,
       selected_products,
+      total_requested_quantity,
       updated_at: updated_at || new Date()
     });
 
@@ -252,6 +263,7 @@ export const updatePurchaseRequest = async (req, res) => {
     res.status(500).json({ message: 'Error updating purchase request', error });
   }
 };
+
 
 
 export const deletePurchaseRequest = async (req, res) => {

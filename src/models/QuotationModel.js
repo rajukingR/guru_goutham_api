@@ -29,6 +29,8 @@ export default (sequelize, DataTypes) => {
     rental_duration: {
       type: DataTypes.INTEGER,
     },
+            rental_duration_days: DataTypes.INTEGER,
+
     remarks: {
       type: DataTypes.TEXT,
     },

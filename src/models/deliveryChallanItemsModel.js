@@ -42,6 +42,10 @@ export default (sequelize, DataTypes) => {
     foreignKey: 'challan_id',
     as: 'challan',
   });
+  DeliveryChallanItem.belongsTo(models.ProductTemplete, {
+    foreignKey: 'product_id',
+    as: 'product',
+  });
 };
 
   return DeliveryChallanItem;

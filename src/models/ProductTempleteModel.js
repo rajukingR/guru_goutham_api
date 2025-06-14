@@ -158,6 +158,7 @@ export default (sequelize, DataTypes) => {
     foreignKey: 'product_id',
     as: 'lead_products'
   });
+  
 };
 
 

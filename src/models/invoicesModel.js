@@ -21,12 +21,41 @@ export default (sequelize, DataTypes) => {
     invoice_date: {
       type: DataTypes.DATE,
     },
-    duration: {
-      type: DataTypes.STRING,
-    },
     invoice_due_date: {
       type: DataTypes.DATE,
     },
+
+    // ✅ New fields
+    invoice_start_date: {
+      type: DataTypes.DATE,
+    },
+    invoice_end_date: {
+      type: DataTypes.DATE,
+    },
+    previous_delivered_start_date: {
+      type: DataTypes.DATE,
+    },
+    previous_delivered_end_date: {
+      type: DataTypes.DATE,
+    },
+    credit_note_start_date: {
+      type: DataTypes.DATE,
+    },
+    credit_note_end_date: {
+      type: DataTypes.DATE,
+    },
+    rental_start_date: {
+      type: DataTypes.DATE,
+    },
+    rental_end_date: {
+      type: DataTypes.DATE,
+    },
+
+    duration: {
+      type: DataTypes.STRING,
+    },
+    rental_duration_months: DataTypes.INTEGER,
+    rental_duration_days: DataTypes.INTEGER,
     purchase_order_date: {
       type: DataTypes.DATE,
     },
@@ -93,7 +122,6 @@ export default (sequelize, DataTypes) => {
     timestamps: false,
   });
 
-
   Invoice.associate = (models) => {
     Invoice.hasMany(models.InvoiceItem, {
       foreignKey: 'invoice_id',
@@ -105,7 +133,6 @@ export default (sequelize, DataTypes) => {
       as: 'shippingDetail',
     });
   };
-
 
   return Invoice;
 };

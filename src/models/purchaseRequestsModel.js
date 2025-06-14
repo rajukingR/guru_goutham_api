@@ -31,6 +31,11 @@ export default (sequelize, DataTypes) => {
     selected_products: {
       type: DataTypes.JSON,
     },
+    total_requested_quantity: {
+      type: DataTypes.INTEGER,
+      allowNull: true, // Optional, default is true when not specified
+    },
+
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,

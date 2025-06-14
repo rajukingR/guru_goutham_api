@@ -11,6 +11,8 @@ export default (sequelize, DataTypes) => {
         lead_source: DataTypes.STRING,
         source_of_enquiry: DataTypes.STRING,
         rental_duration_months: DataTypes.INTEGER,
+        rental_duration_days: DataTypes.INTEGER,
+
         rental_start_date: DataTypes.DATEONLY,
         rental_end_date: DataTypes.DATEONLY,
         lead_date: DataTypes.DATEONLY,
@@ -35,16 +37,16 @@ export default (sequelize, DataTypes) => {
     });
 
     Lead.associate = (models) => {
-  Lead.belongsTo(models.Contact, {
-    foreignKey: 'contact_id',
-    as: 'contact'
-  });
+        Lead.belongsTo(models.Contact, {
+            foreignKey: 'contact_id',
+            as: 'contact'
+        });
 
-  Lead.hasMany(models.LeadProduct, {
-    foreignKey: 'lead_id',
-    as: 'lead_products'
-  });
-};
+        Lead.hasMany(models.LeadProduct, {
+            foreignKey: 'lead_id',
+            as: 'lead_products'
+        });
+    };
 
 
     return Lead;

@@ -16,6 +16,9 @@ export default (sequelize, DataTypes) => {
     product_name: {
       type: DataTypes.STRING,
     },
+    device_ids: {
+      type: DataTypes.JSON,
+    },
     quantity: {
       type: DataTypes.INTEGER,
     },
@@ -29,6 +32,20 @@ export default (sequelize, DataTypes) => {
     tableName: 'grn_items',
     timestamps: false,
   });
+
+
+GRNItem.associate = (models) => {
+  GRNItem.belongsTo(models.GRN, {
+    foreignKey: 'grn_id',  // ✅ This matches the column in grn_items table
+    as: 'grn'  // Optional: you can name this association if needed
+  });
+  
+  GRNItem.belongsTo(models.ProductTemplete, {
+    foreignKey: 'product_id',
+    as: 'product'
+  });
+};
+
 
   return GRNItem;
 };

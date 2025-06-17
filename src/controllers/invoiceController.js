@@ -428,31 +428,340 @@ export const getInvoiceById = async (req, res) => {
 
 
 
-// Update invoice
+// Update invoice with full functionality
 export const updateInvoice = async (req, res) => {
     try {
+        const { id } = req.params;
+        
+       // Find the existing invoice with proper association aliases
+        const invoice = await Invoice.findByPk(id, {
+            include: [
+                { 
+                    model: InvoiceItem,
+                    as: 'items' // Make sure this matches your association alias
+                },
+                { 
+                    model: InvoiceShippingDetail,
+                    as: 'shippingDetail' // Make sure this matches your association alias
+                }
+            ]
+        });
+        
+        if (!invoice) {
+            return res.status(404).json({
+                success: false,
+                message: "Invoice not found"
+            });
+        }
+        // Validate required fields
+        if (!req.body.items || !req.body.items.length) {
+            return res.status(400).json({
+                error: "At least one invoice item is required"
+            });
+        }
+
+        // Destructure request body
         const {
-            id
-        } = req.params;
-        const invoice = await Invoice.findByPk(id);
-        if (!invoice) return res.status(404).json({
-            message: "Invoice not found"
+            order_id,
+            invoice_number,
+            invoice_title,
+            invoice_start_date,
+            invoice_end_date,
+            previous_delivered_start_date,
+            previous_delivered_end_date,
+            credit_note_start_date,
+            credit_note_end_date,
+            duration,
+            rental_duration_months,
+            rental_duration_days,
+            rental_start_date,
+            rental_end_date,
+            purchase_order_date,
+            purchase_order_number,
+            customer_id,
+            customer_name,
+            customer_gst_number,
+            pan_number,
+            phone_number,
+            email,
+            industry,
+            payment_mode,
+            payment_terms,
+            invoice_date,
+            invoice_due_date,
+            approval_status,
+            approval_date,
+            remarks,
+            invoice_consulting_by,
+            shippingDetails,
+            items
+        } = req.body;
+
+        // Reuse the same date formatting from create
+        const formatDate = (input) => {
+            if (!input) return null;
+            const dateParts = input.toString().split(/[-/]/);
+            if (dateParts.length !== 3) return null;
+            const isDayFirst = dateParts[0].length <= 2;
+            const day = isDayFirst ? dateParts[0] : dateParts[2];
+            const month = dateParts[1];
+            const year = isDayFirst ? dateParts[2] : dateParts[0];
+            const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            return isNaN(new Date(formattedDate).getTime()) ? null : formattedDate;
+        };
+
+        const getCurrentTimestamp = () => {
+            const now = new Date();
+            return now.toISOString().replace('T', ' ').slice(0, 19);
+        };
+
+        // Format all dates
+        const formattedInvoiceStartDate = formatDate(invoice_start_date);
+        const formattedInvoiceEndDate = formatDate(invoice_end_date);
+        const formattedInvoiceDate = formatDate(invoice_date) || getCurrentTimestamp();
+        const formattedInvoiceDueDate = formatDate(invoice_due_date);
+        const formattedPreviousStart = formatDate(previous_delivered_start_date);
+        const formattedPreviousEnd = formatDate(previous_delivered_end_date);
+        const formattedCreditStart = formatDate(credit_note_start_date);
+        const formattedCreditEnd = formatDate(credit_note_end_date);
+        const formattedRentalStart = formatDate(rental_start_date);
+        const formattedRentalEnd = formatDate(rental_end_date);
+        const formattedPurchaseOrderDate = formatDate(purchase_order_date);
+        const formattedApprovalDate = formatDate(approval_date);
+
+        // Validate critical dates
+        if (!formattedInvoiceStartDate || !formattedInvoiceEndDate) {
+            return res.status(400).json({
+                error: "Invalid invoice date range provided"
+            });
+        }
+
+        // Calculate total days in invoice period
+        const startDate = new Date(formattedInvoiceStartDate);
+        const endDate = new Date(formattedInvoiceEndDate);
+        const totalInvoiceDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
+        if (totalInvoiceDays <= 0) {
+            return res.status(400).json({
+                error: "Invoice end date must be after start date"
+            });
+        }
+
+        // Get tax rates
+        const tax = await TaxType.findOne({
+            where: {
+                tax_type_name: {
+                    [Op.like]: '%GST%'
+                }
+            },
         });
 
+        const taxRate = tax ? tax.percentage : 18;
+        const cgstRate = taxRate / 2;
+        const sgstRate = taxRate / 2;
+
+        // Update invoice basic information
         await invoice.update({
-            ...req.body,
-            updated_at: new Date()
+            order_id,
+            invoice_number,
+            invoice_title,
+            invoice_date: formattedInvoiceDate,
+            invoice_due_date: formattedInvoiceDueDate,
+            invoice_start_date: formattedInvoiceStartDate,
+            invoice_end_date: formattedInvoiceEndDate,
+            previous_delivered_start_date: formattedPreviousStart,
+            previous_delivered_end_date: formattedPreviousEnd,
+            credit_note_start_date: formattedCreditStart,
+            credit_note_end_date: formattedCreditEnd,
+            duration,
+            rental_duration_months: rental_duration_months || 0,
+            rental_duration_days: rental_duration_days || 0,
+            rental_start_date: formattedRentalStart,
+            rental_end_date: formattedRentalEnd,
+            purchase_order_date: formattedPurchaseOrderDate,
+            purchase_order_number,
+            customer_id,
+            customer_name,
+            customer_gst_number,
+            email,
+            phone_number,
+            pan_number,
+            payment_terms,
+            payment_mode,
+            approval_status: approval_status || invoice.approval_status || "Pending",
+            approval_date: formattedApprovalDate || invoice.approval_date || getCurrentTimestamp(),
+            invoice_consulting_by,
+            industry,
+            remarks,
+            updated_at: getCurrentTimestamp(),
         });
 
-        res.status(200).json({
-            message: "Invoice updated successfully",
-            invoice
+        let invoiceAmount = 0;
+        let totalCGST = 0;
+        let totalSGST = 0;
+        let totalIGST = 0;
+
+        // First, delete all existing invoice items
+        await InvoiceItem.destroy({
+            where: { invoice_id: invoice.id }
         });
+
+        // Process each new invoice item
+        for (const item of items) {
+            const product = await ProductTemplete.findByPk(item.product_id);
+            if (!product) {
+                console.warn(`Product not found for ID: ${item.product_id}`);
+                continue;
+            }
+
+            const rentPerMonth = parseFloat(product.rent_price_per_month || 0);
+            const dailyRate = rentPerMonth / 30; // Standard 30-day month
+
+            const prevQty = parseInt(item.previous_quantity || 0);
+            const newQty = parseInt(item.new_quantity || 0);
+            const returnQty = parseInt(item.return_quantity || 0);
+            const months = parseInt(item.rental_duration_months || 0);
+            const days = parseInt(item.rental_duration_days || 0);
+
+            let total_price = 0;
+
+            // 1. Previous quantity calculation (full period)
+            if (prevQty > 0) {
+                total_price += rentPerMonth * prevQty * months;
+                total_price += dailyRate * prevQty * days;
+            }
+
+            // 2. New quantity calculation (prorated from added date)
+            if (newQty > 0) {
+                const addedDate = item.added_date ?
+                    new Date(formatDate(item.added_date)) :
+                    startDate;
+
+                const effectiveDays = Math.ceil(
+                    (endDate - addedDate) / (1000 * 60 * 60 * 24)) + 1;
+
+                total_price += dailyRate * newQty * Math.max(0, effectiveDays);
+            }
+
+            // 3. Return quantity calculation (prorated to returned date)
+            if (returnQty > 0) {
+                const returnedDate = item.returned_date ?
+                    new Date(formatDate(item.returned_date)) :
+                    endDate;
+
+                const usedDays = Math.ceil(
+                    (returnedDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
+                total_price += dailyRate * returnQty * Math.min(usedDays, totalInvoiceDays);
+            }
+
+            // Calculate taxes
+            const cgst = parseFloat((total_price * cgstRate) / 100);
+            const sgst = parseFloat((total_price * sgstRate) / 100);
+            const total_tax = cgst + sgst;
+            const total_amount = total_price + total_tax;
+
+            // Update invoice totals
+            invoiceAmount += total_price;
+            totalCGST += cgst;
+            totalSGST += sgst;
+
+            // Create invoice item record
+            await InvoiceItem.create({
+                invoice_id: invoice.id,
+                product_id: item.product_id,
+                product_name: item.product_name || product.product_name,
+                previous_quantity: prevQty,
+                quantity: prevQty,
+                unit_price: rentPerMonth.toFixed(2),
+                total_price: total_price.toFixed(2),
+                cgst: cgst.toFixed(2),
+                sgst: sgst.toFixed(2),
+                igst: "0.00",
+                total_tax: total_tax.toFixed(2),
+                total_amount: total_amount.toFixed(2),
+                rental_duration_months: months,
+                rental_duration_days: days,
+                new_quantity: newQty,
+                return_quantity: returnQty,
+                new_device_ids: item.new_device_ids || [],
+                returned_device_ids: item.returned_device_ids || [],
+                added_date: item.new_quantity && Number(item.new_quantity) !== 0 ?
+                    item.added_date ?
+                    formatDate(item.added_date) :
+                    getCurrentTimestamp() : null,
+                returned_date: item.return_quantity && Number(item.return_quantity) !== 0 ?
+                    item.returned_date ?
+                    formatDate(item.returned_date) :
+                    getCurrentTimestamp() : null,
+            });
+        }
+
+        // Calculate final invoice amounts
+        const grandTotal = invoiceAmount + totalCGST + totalSGST;
+
+        // Update invoice with final amounts
+        await invoice.update({
+            amount: parseFloat(invoiceAmount.toFixed(2)),
+            cgst: parseFloat(totalCGST.toFixed(2)),
+            sgst: parseFloat(totalSGST.toFixed(2)),
+            igst: parseFloat(totalIGST.toFixed(2)),
+            total_tax: parseFloat((totalCGST + totalSGST).toFixed(2)),
+            total_amount: parseFloat(grandTotal.toFixed(2)),
+        });
+
+        // Handle shipping details update
+        if (shippingDetails) {
+            if (invoice.InvoiceShippingDetail) {
+                // Update existing shipping details
+                await invoice.InvoiceShippingDetail.update({
+                    consignee_name: shippingDetails.consignee_name || customer_name,
+                    country: shippingDetails.country || "India",
+                    state: shippingDetails.state,
+                    city: shippingDetails.city,
+                    street: shippingDetails.street,
+                    landmark: shippingDetails.landmark,
+                    pincode: shippingDetails.pincode,
+                    phone_number: shippingDetails.phone_number || phone_number,
+                    email: shippingDetails.email || email,
+                });
+            } else {
+                // Create new shipping details if none existed
+                await InvoiceShippingDetail.create({
+                    invoice_id: invoice.id,
+                    consignee_name: shippingDetails.consignee_name || customer_name,
+                    country: shippingDetails.country || "India",
+                    state: shippingDetails.state,
+                    city: shippingDetails.city,
+                    street: shippingDetails.street,
+                    landmark: shippingDetails.landmark,
+                    pincode: shippingDetails.pincode,
+                    phone_number: shippingDetails.phone_number || phone_number,
+                    email: shippingDetails.email || email,
+                });
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Invoice updated successfully",
+            invoice_id: invoice.id,
+            invoice_number: invoice.invoice_number,
+            total_amount: grandTotal.toFixed(2),
+            breakdown: {
+                subtotal: invoiceAmount.toFixed(2),
+                cgst: totalCGST.toFixed(2),
+                sgst: totalSGST.toFixed(2),
+                igst: totalIGST.toFixed(2)
+            }
+        });
+
     } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            message: "Error updating invoice",
-            error
+        console.error("Error updating invoice:", error);
+        return res.status(500).json({
+            success: false,
+            error: "Failed to update invoice",
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined,
         });
     }
 };

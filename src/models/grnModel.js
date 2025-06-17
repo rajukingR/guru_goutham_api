@@ -1,6 +1,6 @@
 export default (sequelize, DataTypes) => {
   const GRN = sequelize.define('GRN', {
-    grn_id: {
+    id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
@@ -9,13 +9,18 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
+    order_id: {
+  type: DataTypes.STRING,
+  allowNull: true, // or false, if required
+},
+
     grn_title: {
       type: DataTypes.STRING,
     },
-    customer_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
+customer_id: {
+  type: DataTypes.STRING,
+},
+
     customer_name: {
       type: DataTypes.STRING,
     },
@@ -106,6 +111,15 @@ export default (sequelize, DataTypes) => {
     tableName: 'grn',
     timestamps: false,
   });
+
+
+GRN.associate = (models) => {
+  GRN.hasMany(models.GRNItem, {
+    foreignKey: 'grn_id',  // ✅ This matches the column in grn_items table
+    as: 'items',
+  });
+};
+
 
   return GRN;
 };

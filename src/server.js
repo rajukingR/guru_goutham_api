@@ -113,7 +113,7 @@ app.use('/api/stock-location', stockLocationRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/tax-list', taxListRoutes);
 app.use("/api/branches", branchRoutes);
-app.use("/api/goods-return-notes", GoodsReturnNoteRoutes);
+app.use("/api/goods-return-notes", grnRoutes);
 app.use('/api/product-services', productServiceRoutes);
 app.use('/api/asset-modifications', assetRoutes);
 app.use('/api/credit-notes', CreditNoteRoutes);

@@ -18,6 +18,10 @@ export default (sequelize, DataTypes) => {
     quantity: {
       type: DataTypes.INTEGER,
     },
+     previous_quantity: {
+      type: DataTypes.INTEGER,     // ✅ Newly added
+      defaultValue: 0,
+    },
     unit_price: {
       type: DataTypes.DECIMAL(10, 2),
     },

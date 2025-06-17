@@ -158,6 +158,11 @@ export default (sequelize, DataTypes) => {
     foreignKey: 'product_id',
     as: 'lead_products'
   });
+  ProductTemplete.hasMany(models.GRNItem, {
+  foreignKey: 'product_id',
+  as: 'grn_items'
+});
+
   
 };
 

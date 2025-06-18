@@ -20,6 +20,19 @@ const getAllStockLocations = async (req, res) => {
   }
 };
 
+
+const getAllActiveStockLocations = async (req, res) => {
+  try {
+    const activeLocations = await StockLocation.findAll({
+      where: { is_active: 1 }
+    });
+    res.status(200).json(activeLocations);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching active stock locations', error: error.message });
+  }
+};
+
+
 const getStockLocationById = async (req, res) => {
   try {
     const location = await StockLocation.findByPk(req.params.id);
@@ -57,6 +70,7 @@ const deleteStockLocation = async (req, res) => {
 export {
   createStockLocation,
   getAllStockLocations,
+  getAllActiveStockLocations,
   getStockLocationById,
   updateStockLocation,
   deleteStockLocation,

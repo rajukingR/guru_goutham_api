@@ -36,6 +36,7 @@ import productServiceRoutes from './routes/ProductServiceRoutes.js';
 import assetRoutes from './routes/AssetModificationRoutes.js';
 import CreditNoteRoutes from './routes/CreditNoteRoutes.js';
 import clientRoutes from './routes/clientDetailsRoutes.js';
+import cityRoutes from './routes/cityRoutes.js';
 
 
 
@@ -118,6 +119,7 @@ app.use('/api/product-services', productServiceRoutes);
 app.use('/api/asset-modifications', assetRoutes);
 app.use('/api/credit-notes', CreditNoteRoutes);
 app.use('/api/user', clientRoutes);
+app.use('/api/cities', cityRoutes);
 
 
 const PORT = process.env.PORT || 5000;

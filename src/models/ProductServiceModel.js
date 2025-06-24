@@ -50,7 +50,7 @@ export default (sequelize, DataTypes) => {
       },
     },
     {
-      tableName: "ProductService", // 👈 Add this line
+      tableName: "ProductService", 
       timestamps: false,
     }
   );

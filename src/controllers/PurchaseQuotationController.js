@@ -2,7 +2,6 @@ import db from '../models/index.js';
 const PurchaseQuotation = db.PurchaseQuotation;
 const Supplier = db.Supplier;
 
-// Create a new purchase quotation
 export const createPurchaseQuotation = async (req, res) => {
   try {
     const {
@@ -38,15 +37,14 @@ export const createPurchaseQuotation = async (req, res) => {
   }
 };
 
-// Get all purchase quotations
 export const getAllPurchaseQuotations = async (req, res) => {
   try {
     const quotations = await PurchaseQuotation.findAll({
       include: [
         {
           model: Supplier,
-          as: 'supplier', // Make sure this matches your association alias
-          attributes: ['supplier_id', 'supplier_name'], // Include only needed fields
+          as: 'supplier', 
+          attributes: ['supplier_id', 'supplier_name'], 
         },
       ],
     });
@@ -84,7 +82,6 @@ export const getApprovedPurchaseQuotations = async (req, res) => {
     res.status(500).json({ message: 'Server error', error });
   }
 };
-// Get a purchase quotation by ID
 export const getPurchaseQuotationById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -93,7 +90,7 @@ export const getPurchaseQuotationById = async (req, res) => {
       include: [
         {
           model: Supplier,
-          as: 'supplier', // Must match association alias
+          as: 'supplier', 
           attributes: ['supplier_id', 'supplier_name'],
         },
       ],
@@ -110,7 +107,6 @@ export const getPurchaseQuotationById = async (req, res) => {
   }
 };
 
-// Update a purchase quotation
 export const updatePurchaseQuotation = async (req, res) => {
   try {
     const { id } = req.params;
@@ -149,7 +145,6 @@ export const updatePurchaseQuotation = async (req, res) => {
   }
 };
 
-// Delete a purchase quotation
 export const deletePurchaseQuotation = async (req, res) => {
   try {
     const { id } = req.params;

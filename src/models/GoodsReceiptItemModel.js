@@ -23,16 +23,11 @@ export default (sequelize, DataTypes) => {
     tableName: 'goods_receipt_items',
     timestamps: false,
   });
-
-
  GoodsReceiptItem.associate = (models) => {
   GoodsReceiptItem.belongsTo(models.GoodsReceipt, {
-    foreignKey: 'goods_receipt_id',   // keep this
-    targetKey: 'id',                  // change this to primary key of GoodsReceipt
+    foreignKey: 'goods_receipt_id',  
+    targetKey: 'id',                  
   });
 };
-
-
-
   return GoodsReceiptItem;
 };

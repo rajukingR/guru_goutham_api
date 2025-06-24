@@ -1,4 +1,3 @@
-// models/ClientDetailsModel.js
 
 export default (sequelize, DataTypes) => {
   const ClientDetails = sequelize.define('ClientDetails', {

@@ -1,9 +1,8 @@
 import db from '../models/index.js';
 import { Op } from "sequelize";
 
-const Product = db.Product; // Assuming you imported it similarly in models/index.js
+const Product = db.Product; 
 
-// Create a new product
 export const createProduct = async (req, res) => {
   try {
     const {
@@ -19,7 +18,6 @@ export const createProduct = async (req, res) => {
       is_active,
     } = req.body;
 
-    // Optionally: Check for duplicate product name if needed
     const existingProduct = await Product.findOne({ where: { name, model } });
     if (existingProduct) {
       return res.status(400).json({ message: "Product with this name and model already exists." });
@@ -35,7 +33,7 @@ export const createProduct = async (req, res) => {
       hsn_code,
       specifications,
       image_url,
-      is_active: is_active ?? 1, // default active if not provided
+      is_active: is_active ?? 1, 
     });
 
     res.status(201).json({ message: "Product created successfully", product });
@@ -45,7 +43,6 @@ export const createProduct = async (req, res) => {
   }
 };
 
-// Get all products
 export const getAllProducts = async (req, res) => {
   try {
     const products = await Product.findAll();
@@ -56,7 +53,6 @@ export const getAllProducts = async (req, res) => {
   }
 };
 
-// Get product by ID
 export const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -71,7 +67,7 @@ export const getProductById = async (req, res) => {
   }
 };
 
-// Update product
+
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -112,7 +108,6 @@ export const updateProduct = async (req, res) => {
   }
 };
 
-// Delete product
 export const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;

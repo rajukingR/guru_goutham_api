@@ -106,7 +106,7 @@ export const getApprovedPurchaseOrders = async (req, res) => {
   try {
     const orders = await db.PurchaseOrder.findAll({
       where: {
-        po_status: 'Approved', // Ensure this matches the status used in your DB
+        po_status: 'Approved',
       },
       include: [
         {

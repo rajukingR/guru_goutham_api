@@ -64,7 +64,7 @@ export const getAllQuotations = async (req, res) => {
       include: [
         {
           model: QuotationItem,
-          as: 'items', // use the same alias as defined in the model
+          as: 'items',
         }
       ]
     });
@@ -76,15 +76,14 @@ export const getAllQuotations = async (req, res) => {
 };
 
 
-// Get only Approved quotations
 export const getAllQuotationsApproved = async (req, res) => {
   try {
     const quotations = await Quotation.findAll({
-      where: { status: 'Approved' }, // Filter by status
+      where: { status: 'Approved' }, 
       include: [
         {
           model: QuotationItem,
-          as: 'items', // Make sure this alias matches your association
+          as: 'items',
         }
       ]
     });
@@ -96,14 +95,13 @@ export const getAllQuotationsApproved = async (req, res) => {
 };
 
 
-// Get quotation by ID
 export const getQuotationById = async (req, res) => {
   try {
     const { id } = req.params;
     const quotation = await Quotation.findByPk(id, { include: [
         {
           model: QuotationItem,
-          as: 'items', // use the same alias as defined in the model
+          as: 'items',
         }
       ] });
 
@@ -116,7 +114,6 @@ export const getQuotationById = async (req, res) => {
   }
 };
 
-// Update quotation
 export const updateQuotation = async (req, res) => {
   try {
     const { id } = req.params;
@@ -153,7 +150,6 @@ export const updateQuotation = async (req, res) => {
   }
 };
 
-// Delete quotation
 export const deleteQuotation = async (req, res) => {
   try {
     const { id } = req.params;
@@ -161,7 +157,7 @@ export const deleteQuotation = async (req, res) => {
 
     if (!quotation) return res.status(404).json({ message: 'Quotation not found' });
 
-    await QuotationItem.destroy({ where: { quotation_id: id } }); // delete items first
+    await QuotationItem.destroy({ where: { quotation_id: id } }); 
     await quotation.destroy();
 
     res.status(200).json({ message: 'Quotation deleted successfully' });

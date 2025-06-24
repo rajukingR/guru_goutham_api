@@ -3,7 +3,7 @@ const {
   Lead,
   ProductTemplete,
   Contact,
-  LeadProduct // 👈 Make sure this is imported!
+  LeadProduct 
 } = db;
 
 export const createLead = async (req, res) => {
@@ -51,7 +51,7 @@ export const createLead = async (req, res) => {
         quantity: product.quantity
       }));
 
-      await db.LeadProduct.bulkCreate(leadProductsData); // <- make sure `db.LeadProduct` is defined
+      await db.LeadProduct.bulkCreate(leadProductsData); 
     }
 
     res.status(201).json({
@@ -69,7 +69,6 @@ export const createLead = async (req, res) => {
 
 
 
-// Get all Leads
 export const getAllLeads = async (req, res) => {
     try {
         const leads = await Lead.findAll({
@@ -135,7 +134,6 @@ export const getAllLeadsActived = async (req, res) => {
 
 
 
-// Get a single Lead by ID
 export const getLeadById = async (req, res) => {
   try {
     const lead = await Lead.findByPk(req.params.id, {
@@ -174,7 +172,6 @@ export const getLeadById = async (req, res) => {
 };
 
 
-// Update a Lead
 export const updateLead = async (req, res) => {
   try {
     const lead = await Lead.findByPk(req.params.id);
@@ -200,7 +197,6 @@ export const updateLead = async (req, res) => {
       selected_products
     } = req.body;
 
-    // Update the lead data
     await lead.update({
       lead_id,
       lead_title,
@@ -218,11 +214,9 @@ export const updateLead = async (req, res) => {
       contact_id
     });
 
-    // 🔄 Update the lead_products table
     if (Array.isArray(selected_products) && selected_products.length > 0) {
   const productIds = selected_products.map(p => p.product_id);
 
-  // ✅ Validate all product_ids exist in ProductTemplete
   const validProducts = await ProductTemplete.findAll({
     where: { id: productIds },
     attributes: ['id']
@@ -259,7 +253,6 @@ export const updateLead = async (req, res) => {
   }
 };
 
-// Delete a Lead
 export const deleteLead = async (req, res) => {
     try {
         const lead = await Lead.findByPk(req.params.id);

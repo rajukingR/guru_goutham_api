@@ -37,6 +37,11 @@ import assetRoutes from './routes/AssetModificationRoutes.js';
 import CreditNoteRoutes from './routes/CreditNoteRoutes.js';
 import clientRoutes from './routes/clientDetailsRoutes.js';
 import cityRoutes from './routes/cityRoutes.js';
+import leadChecklistRoutes from './routes/leadChecklist.routes.js';
+import leadStatusRoutes from './routes/leadStatusRoutes.js';
+import orderChecklistRoutes from './routes/orderChecklistRoutes.js';
+import servicePriorityLevelRoutes from './routes/servicePriorityLevelRoutes.js';
+import ServiceStatusRoutes from './routes/ServiceStatusRoutes.js';
 
 
 
@@ -120,6 +125,12 @@ app.use('/api/asset-modifications', assetRoutes);
 app.use('/api/credit-notes', CreditNoteRoutes);
 app.use('/api/user', clientRoutes);
 app.use('/api/cities', cityRoutes);
+app.use('/api/lead-checklists', leadChecklistRoutes);
+app.use('/api/lead-status', leadStatusRoutes);
+app.use('/api/lead-status', leadStatusRoutes);
+app.use('/api/order-checklists', orderChecklistRoutes);
+app.use('/api/service-priority-levels', servicePriorityLevelRoutes);
+app.use('/api/service-status', ServiceStatusRoutes);
 
 
 const PORT = process.env.PORT || 5000;

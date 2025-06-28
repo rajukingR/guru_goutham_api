@@ -17,8 +17,16 @@ export default (sequelize, DataTypes) => {
     timestamps: false,
   });
 
-  OrderItem.associate = models => {
-    OrderItem.belongsTo(models.Order, { foreignKey: 'order_id' });
+ OrderItem.associate = models => {
+    OrderItem.belongsTo(models.Order, {
+      foreignKey: 'order_id',
+      as: 'order'
+    });
+    OrderItem.belongsTo(models.ProductTemplete, {
+  foreignKey: 'product_id',
+  as: 'product'
+});
+
   };
 
   return OrderItem;

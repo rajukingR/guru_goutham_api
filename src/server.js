@@ -44,7 +44,7 @@ import servicePriorityLevelRoutes from './routes/servicePriorityLevelRoutes.js';
 import ServiceStatusRoutes from './routes/ServiceStatusRoutes.js';
 import stateRoutes from './routes/stateRoutes.js';
 
-
+import salesRoutes from './routes/salesRoutes.js';
 
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);  
@@ -133,6 +133,9 @@ app.use('/api/order-checklists', orderChecklistRoutes);
 app.use('/api/service-priority-levels', servicePriorityLevelRoutes);
 app.use('/api/service-status', ServiceStatusRoutes);
 app.use('/api/states', stateRoutes);
+
+app.use('/api/sales-report', salesRoutes);
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));                    

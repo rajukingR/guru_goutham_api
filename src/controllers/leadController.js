@@ -122,7 +122,10 @@ export const getAllLeadsActived = async (req, res) => {
       ]
     });
 
-    res.status(200).json(leads);
+    res.status(200).json({
+      totalCount: leads.length,
+      leads
+    });
   } catch (error) {
     console.error("Error fetching active leads:", error);
     res.status(500).json({
@@ -131,6 +134,7 @@ export const getAllLeadsActived = async (req, res) => {
     });
   }
 };
+
 
 
 

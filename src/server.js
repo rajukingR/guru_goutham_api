@@ -87,13 +87,10 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 
-
 db.authenticate()
   .then(() => console.log('Database connected successfully'))
   .catch(err => console.log('Database connection failed:', err));
-
 app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
-
 app.use('/api', parentRouter)
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);

@@ -3,22 +3,28 @@ const Quotation = db.Quotation;
 const QuotationItem = db.QuotationItem;
 const Product = db.Product;
 const Lead = db.Lead;
+const GoodsReceiptItem = db.GoodsReceiptItem;
+const Order =  db.Order;
+const OrderItem =  db.OrderItem;
+const Contact = db.Contact;
 
-// Create a new quotation
 export const createQuotation = async (req, res) => {
   try {
     const {
       quotation_id,
       quotation_title,
       lead_id,
-      rental_start_date,
-      rental_end_date,
+      // rental_start_date,
+      // rental_end_date,
       quotation_date,
       rental_duration,
       rental_duration_days,
       remarks,
       quotation_generated_by,
       status,
+      customer_id,
+      customer_first_name,
+      customer_last_name,
       items
     } = req.body;
 
@@ -26,14 +32,17 @@ export const createQuotation = async (req, res) => {
       quotation_id,
       quotation_title,
       lead_id,
-      rental_start_date,
-      rental_end_date,
+      // rental_start_date,
+      // rental_end_date,
       quotation_date,
       rental_duration,
       rental_duration_days,
       remarks,
       quotation_generated_by,
-      status
+      status,
+      customer_id,
+      customer_first_name,
+      customer_last_name
     });
 
     if (items && Array.isArray(items)) {
@@ -63,6 +72,7 @@ export const createQuotation = async (req, res) => {
     });
   }
 };
+;
 
 
 // Get all quotations
@@ -85,27 +95,112 @@ export const getAllQuotations = async (req, res) => {
 };
 
 
-// Get only Approved quotations
 export const getAllQuotationsApproved = async (req, res) => {
   try {
     const quotations = await Quotation.findAll({
-      where: {
-        status: 'Approved'
-      }, // Filter by status
-      include: [{
-        model: QuotationItem,
-        as: 'items', // Make sure this alias matches your association
-      }]
+      where: { status: 'Approved' },
+      include: [
+        {
+          model: QuotationItem,
+          as: 'items',
+          include: [
+            {
+              model: db.GoodsReceiptItem,
+              as: 'goodsReceiptItems',
+              attributes: ['id', 'goods_receipt_id', 'product_id', 'asset_ids'],
+            },
+          ],
+        },
+        {
+          model: Contact,
+          as: 'customer', // This alias must match the one in the association
+          attributes: [
+            'id',
+            'first_name',
+            'last_name',
+            'email',
+            'phone_number',
+            'company_name',
+            'customer_id',
+            'industry',
+            'payment_type',
+            'gst',
+            'pan_no',
+            'owner',
+            'remarks',
+            'status',
+            'created_at',
+            'updated_at',
+            'address'
+          ],
+        },
+      ],
     });
+
+    const approvedOrders = await Order.findAll({
+      where: { order_status: 'Approved' },
+      include: [
+        {
+          model: OrderItem,
+          as: 'items',
+          attributes: ['product_id', 'device_ids'],
+        },
+      ],
+    });
+
+    const usedDeviceMap = {};
+
+    approvedOrders.forEach(order => {
+      order.items.forEach(item => {
+        const productId = item.product_id;
+        let deviceIds = [];
+
+        try {
+          deviceIds = Array.isArray(item.device_ids)
+            ? item.device_ids
+            : JSON.parse(item.device_ids || '[]');
+        } catch (err) {
+          console.warn('Invalid device_ids JSON:', item.device_ids);
+        }
+
+        if (!usedDeviceMap[productId]) {
+          usedDeviceMap[productId] = new Set();
+        }
+
+        deviceIds.forEach(id => usedDeviceMap[productId].add(id));
+      });
+    });
+
+    quotations.forEach(q => {
+      q.items.forEach(item => {
+        const allAssets = [];
+
+        item.goodsReceiptItems?.forEach(grn => {
+          if (Array.isArray(grn.asset_ids)) {
+            allAssets.push(...grn.asset_ids);
+          }
+        });
+
+        const usedSet = usedDeviceMap[item.product_id] || new Set();
+        const remainingAssets = allAssets.filter(asset => !usedSet.has(asset));
+        item.setDataValue('available_asset_ids', remainingAssets);
+      });
+    });
+
     res.status(200).json(quotations);
   } catch (error) {
-    console.error(error);
+    console.error('Error fetching approved quotations with remaining assets:', error);
     res.status(500).json({
-      message: 'Error fetching approved quotations',
-      error
+      message: 'Error fetching approved quotations with remaining assets',
+      error,
     });
   }
 };
+
+
+
+
+
 
 
 // Get quotation by ID
@@ -138,36 +233,38 @@ export const getQuotationById = async (req, res) => {
 // Update quotation
 export const updateQuotation = async (req, res) => {
   try {
-    const {
-      id
-    } = req.params;
+    const { id } = req.params;
     const {
       quotation_title,
-      rental_start_date,
-      rental_end_date,
-      quotation_date,
-      rental_duration,
-      rental_duration_days,
-      remarks,
-      quotation_generated_by,
-      status
-    } = req.body;
-
-    const quotation = await Quotation.findByPk(id);
-    if (!quotation) return res.status(404).json({
-      message: 'Quotation not found'
-    });
-
-    await quotation.update({
-      quotation_title,
-      rental_start_date,
-      rental_end_date,
+      // rental_start_date,
+      // rental_end_date,
       quotation_date,
       rental_duration,
       rental_duration_days,
       remarks,
       quotation_generated_by,
       status,
+      customer_id,
+      customer_first_name,
+      customer_last_name
+    } = req.body;
+
+    const quotation = await Quotation.findByPk(id);
+    if (!quotation) return res.status(404).json({ message: 'Quotation not found' });
+
+    await quotation.update({
+      quotation_title,
+      // rental_start_date,
+      // rental_end_date,
+      quotation_date,
+      rental_duration,
+      rental_duration_days,
+      remarks,
+      quotation_generated_by,
+      status,
+      customer_id,
+      customer_first_name,
+      customer_last_name,
       updated_at: new Date()
     });
 
@@ -183,6 +280,7 @@ export const updateQuotation = async (req, res) => {
     });
   }
 };
+
 
 // Delete quotation
 export const deleteQuotation = async (req, res) => {

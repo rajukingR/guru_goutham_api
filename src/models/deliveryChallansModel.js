@@ -20,7 +20,7 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
     },
     customer_code: {
-      type: DataTypes.STRING,
+      type: DataTypes.INTEGER, // ✅ MATCH contacts.id if integer
     },
     order_number: {
       type: DataTypes.STRING,
@@ -50,6 +50,9 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
     },
     type: {
+      type: DataTypes.STRING,
+    },
+    payment_type: {
       type: DataTypes.STRING,
     },
     regular_dc: {
@@ -115,12 +118,22 @@ export default (sequelize, DataTypes) => {
   });
 
   DeliveryChallan.associate = (models) => {
-  DeliveryChallan.hasMany(models.DeliveryChallanItem, {
-    foreignKey: 'challan_id',
-    as: 'items',
-  });
-};
+    DeliveryChallan.hasMany(models.DeliveryChallanItem, {
+      foreignKey: 'challan_id',
+      as: 'items',
+    });
 
+    DeliveryChallan.belongsTo(models.Contact, {
+      foreignKey: 'customer_code',
+      targetKey: 'id', // ✅ Ensure this matches your contacts PK
+      as: 'customer',
+    });
+
+    DeliveryChallan.belongsTo(models.Order, {
+      foreignKey: 'order_id',
+      as: 'order',
+    });
+  };
 
   return DeliveryChallan;
 };

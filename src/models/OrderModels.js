@@ -8,6 +8,8 @@ export default (sequelize, DataTypes) => {
         order_id: DataTypes.STRING,
         order_title: DataTypes.STRING,
         quotation_id: DataTypes.INTEGER,
+                customer_id: DataTypes.INTEGER, // ✅ Added customer_id here
+
         transaction_type: DataTypes.STRING,
         payment_type: DataTypes.STRING,
         order_status: DataTypes.STRING,
@@ -39,21 +41,32 @@ export default (sequelize, DataTypes) => {
     });
 
 
+Order.associate = (models) => {
+  Order.hasMany(models.OrderItem, {
+    foreignKey: 'order_id',
+    as: 'items',
+  });
 
-    Order.associate = models => {
-        Order.hasMany(models.OrderItem, {
-            foreignKey: 'order_id',
-            as: 'items'
-        });
-        Order.hasOne(models.OrderAddress, {
-            foreignKey: 'order_id',
-            as: 'address'
-        });
-        Order.hasOne(models.OrderPersonalDetail, {
-            foreignKey: 'order_id',
-            as: 'personalDetails'
-        });
-    };
+  Order.hasOne(models.OrderAddress, {
+    foreignKey: 'order_id',
+    as: 'address',
+  });
+  Order.belongsTo(models.Contact, {
+  foreignKey: 'customer_id',
+  as: 'customer',
+});
+
+
+  Order.hasOne(models.OrderPersonalDetail, {
+    foreignKey: 'order_id',
+    as: 'personalDetails',
+  });
+
+  Order.hasMany(models.GRN, {  // ✅ use models.GRN instead of GRN
+    foreignKey: 'order_id',
+    as: 'grns',
+  });
+};
 
 
     return Order;

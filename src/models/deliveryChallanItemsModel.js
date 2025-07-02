@@ -24,6 +24,16 @@ export default (sequelize, DataTypes) => {
     total_price: {
       type: DataTypes.DECIMAL(12, 2),
     },
+    device_ids: {
+      type: DataTypes.TEXT,
+      get() {
+        const rawValue = this.getDataValue('device_ids');
+        return rawValue ? JSON.parse(rawValue) : [];
+      },
+      set(value) {
+        this.setDataValue('device_ids', JSON.stringify(value));
+      },
+    },
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
@@ -38,15 +48,16 @@ export default (sequelize, DataTypes) => {
   });
 
   DeliveryChallanItem.associate = (models) => {
-  DeliveryChallanItem.belongsTo(models.DeliveryChallan, {
-    foreignKey: 'challan_id',
-    as: 'challan',
-  });
-  DeliveryChallanItem.belongsTo(models.ProductTemplete, {
-    foreignKey: 'product_id',
-    as: 'product',
-  });
-};
+    DeliveryChallanItem.belongsTo(models.DeliveryChallan, {
+      foreignKey: 'challan_id',
+      as: 'challan',
+    });
+
+    DeliveryChallanItem.belongsTo(models.ProductTemplete, {
+      foreignKey: 'product_id',
+      as: 'product',
+    });
+  };
 
   return DeliveryChallanItem;
 };

@@ -39,6 +39,12 @@ export default (sequelize, DataTypes) => {
       foreignKey: 'quotation_id',
       as: 'quotation',
     });
+    QuotationItem.hasMany(models.GoodsReceiptItem, {
+  foreignKey: 'product_id',
+  sourceKey: 'product_id',
+  as: 'goodsReceiptItems',
+});
+
   };
 
 

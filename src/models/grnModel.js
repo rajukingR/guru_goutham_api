@@ -91,6 +91,9 @@ customer_id: {
     description: {
       type: DataTypes.TEXT,
     },
+    grn_status: {
+      type: DataTypes.TEXT,
+    },
     vehicle_number: {
       type: DataTypes.STRING,
     },
@@ -115,10 +118,20 @@ customer_id: {
 
 GRN.associate = (models) => {
   GRN.hasMany(models.GRNItem, {
-    foreignKey: 'grn_id',  // ✅ This matches the column in grn_items table
+    foreignKey: 'grn_id',
     as: 'items',
   });
+  GRN.belongsTo(models.Order, {
+    foreignKey: 'order_id',
+    as: 'order',
+  });
+  GRN.belongsTo(models.Contact, {
+  foreignKey: 'customer_id',
+  as: 'customer_details'
+});
+
 };
+
 
 
   return GRN;

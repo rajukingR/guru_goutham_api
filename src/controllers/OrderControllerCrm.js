@@ -1,13 +1,20 @@
 import db from '../models/index.js';
+
 const {
   Order,
   OrderItem,
   OrderAddress,
   OrderPersonalDetail,
-  GoodsReceipt,
   GoodsReceiptItem,
+  GoodsReceipt,
   Product,
-  ProductTemplete
+  ProductTemplete,
+  DeliveryChallan,
+  DeliveryChallanItem,
+  Contact,
+
+   Invoice,
+  InvoiceItem,
 } = db;
 
 // ✅ Helper: Validate stock from approved goods receipts
@@ -78,6 +85,7 @@ export const createOrder = async (req, res) => {
       order_id,
       order_title,
       quotation_id,
+      customer_id,
       transaction_type,
       payment_type,
       order_status,
@@ -112,6 +120,7 @@ export const createOrder = async (req, res) => {
       order_id,
       order_title,
       quotation_id,
+      customer_id,
       transaction_type,
       payment_type,
       order_status,
@@ -182,6 +191,7 @@ export const updateOrder = async (req, res) => {
       transaction_type,
       payment_type,
       order_status,
+      customer_id,
       source_of_entry,
       owner,
       remarks,
@@ -192,15 +202,17 @@ export const updateOrder = async (req, res) => {
       rental_end_date,
       order_date,
       contact_status,
-      personal_details,
+      personalDetails, // ✅ use camelCase key as per frontend
       address,
-      items
+      items,
     } = req.body;
 
     const order = await Order.findByPk(id);
-    if (!order) return res.status(404).json({
-      message: 'Order not found'
-    });
+    if (!order) {
+      return res.status(404).json({
+        message: 'Order not found'
+      });
+    }
 
     // 👉 Validate stock if order is being Approved
     if (order_status === 'Approved') {
@@ -208,17 +220,19 @@ export const updateOrder = async (req, res) => {
       if (validation.error) {
         return res.status(400).json({
           message: 'Some products have insufficient stock',
-          errors: validation.errors
+          errors: validation.errors,
         });
       }
     }
 
+    // 👉 Update order fields
     await order.update({
       order_title,
       transaction_type,
       payment_type,
       order_status,
       source_of_entry,
+      customer_id,
       owner,
       remarks,
       order_generated_by,
@@ -228,69 +242,75 @@ export const updateOrder = async (req, res) => {
       rental_end_date,
       order_date,
       contact_status,
-      updated_at: new Date()
+      updated_at: new Date(),
     });
 
-    // Update personal details
-    if (personal_details) {
+    // 👉 Update personal details (including GST number)
+    if (personalDetails) {
       const personalDetail = await OrderPersonalDetail.findOne({
         where: {
           order_id: id
-        }
+        },
       });
+
       if (personalDetail) {
-        await personalDetail.update(personal_details);
+        await personalDetail.update(personalDetails);
       } else {
         await OrderPersonalDetail.create({
-          ...personal_details,
-          order_id: id
+          ...personalDetails,
+          order_id: id,
         });
       }
     }
 
-    // Update address
+    // 👉 Update address
     if (address) {
       const orderAddress = await OrderAddress.findOne({
         where: {
           order_id: id
-        }
+        },
       });
+
       if (orderAddress) {
         await orderAddress.update(address);
       } else {
         await OrderAddress.create({
           ...address,
-          order_id: id
+          order_id: id,
         });
       }
     }
 
-    // Replace order items
+    // 👉 Replace order items
     if (items && Array.isArray(items)) {
       await OrderItem.destroy({
         where: {
           order_id: id
         }
       });
-      const formattedItems = items.map(item => ({
+
+      const formattedItems = items.map((item) => ({
         ...item,
-        order_id: id
+        order_id: id,
       }));
+
       await OrderItem.bulkCreate(formattedItems);
     }
 
-    res.status(200).json({
+    // ✅ Respond
+    return res.status(200).json({
       message: 'Order updated successfully',
-      order
+      order,
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
+    console.error('Error updating order:', error);
+    return res.status(500).json({
       message: 'Error updating order',
-      error
+      error: error.message || 'Internal Server Error',
     });
   }
 };
+
 
 // Get All Orders
 export const getAllOrders = async (req, res) => {
@@ -387,50 +407,46 @@ export const getAllOrders = async (req, res) => {
 };
 
 
+
 export const getAllOrdersApproved = async (req, res) => {
   try {
     const orders = await Order.findAll({
-      where: {
-        order_status: 'Approved'
-      }, // ✅ Filter approved orders
-      include: [{
-          model: OrderItem,
-          as: 'items'
-        },
-        {
-          model: OrderAddress,
-          as: 'address'
-        },
-        {
-          model: OrderPersonalDetail,
-          as: 'personalDetails'
-        }
-      ]
+      where: { order_status: 'Approved' },
+      include: [
+        { model: OrderItem, as: 'items' },
+        { model: OrderAddress, as: 'address' },
+        { model: OrderPersonalDetail, as: 'personalDetails' },
+        { model: Contact, as: 'customer' }
+      ],
+      order: [['id', 'DESC']]
     });
 
+    // Step 1: Get only latest order per customer
+    const latestOrdersMap = new Map();
+    for (const order of orders) {
+      const customerId = order.customer_id;
+      if (customerId && !latestOrdersMap.has(customerId)) {
+        latestOrdersMap.set(customerId, order);
+      }
+    }
+    const latestOrders = Array.from(latestOrdersMap.values());
+
     const formattedOrders = await Promise.all(
-      orders.map(async (order) => {
+      latestOrders.map(async (order) => {
         const orderJSON = order.toJSON();
-        const {
-          transaction_type,
-          rental_duration
-        } = orderJSON;
+        const { transaction_type, rental_duration } = orderJSON;
 
         let totalValue = 0;
 
-        // Calculate each item value
         const itemsWithValue = await Promise.all(
           orderJSON.items.map(async (item) => {
-            const product = await ProductTemplete.findOne({
-              where: {
-                id: item.product_id
-              }
-            });
+            const product = await ProductTemplete.findOne({ where: { id: item.product_id } });
 
             let itemTotal = 0;
             const qty = item.requested_quantity || 0;
             const duration = parseInt(rental_duration);
 
+            // Price calculation
             if (product) {
               if (transaction_type === 'Rent') {
                 if (duration >= 12 && product.rent_price_1_year) {
@@ -449,9 +465,75 @@ export const getAllOrdersApproved = async (req, res) => {
 
             totalValue += itemTotal;
 
+            // Step 1: Get all received asset_ids for the product
+            const grnItems = await GoodsReceiptItem.findAll({
+              where: { product_id: item.product_id },
+              attributes: ['asset_ids']
+            });
+
+            const allAssets = grnItems.flatMap(grn =>
+              Array.isArray(grn.asset_ids) ? grn.asset_ids : []
+            );
+            const allAssetSet = new Set(allAssets);
+
+            // Step 2: Get used device_ids from InvoiceItems for this order and product
+            const usedInvoiceItems = await InvoiceItem.findAll({
+              include: [{
+                model: Invoice,
+                as: 'invoice',
+                where: { order_id: order.id },
+                attributes: []
+              }],
+              where: { product_id: item.product_id },
+              attributes: ['device_ids']
+            });
+
+            const usedSet = new Set();
+            for (const ii of usedInvoiceItems) {
+              try {
+                const deviceIds = Array.isArray(ii.device_ids)
+                  ? ii.device_ids
+                  : JSON.parse(ii.device_ids || '[]');
+                deviceIds.forEach(id => usedSet.add(id));
+              } catch (err) {
+                console.warn('Invalid device_ids JSON in InvoiceItem:', ii.device_ids);
+              }
+            }
+
+            // Step 3: Get returned device_ids from InvoiceItems for this order and product
+            const returnedInvoiceItems = await InvoiceItem.findAll({
+              include: [{
+                model: Invoice,
+                as: 'invoice',
+                where: { order_id: order.id },
+                attributes: []
+              }],
+              where: { product_id: item.product_id },
+              attributes: ['returned_device_ids']
+            });
+
+            const returnedSet = new Set();
+            for (const ii of returnedInvoiceItems) {
+              try {
+                const returnedIds = Array.isArray(ii.returned_device_ids)
+                  ? ii.returned_device_ids
+                  : JSON.parse(ii.returned_device_ids || '[]');
+                returnedIds.forEach(id => returnedSet.add(id));
+              } catch (err) {
+                console.warn('Invalid returned_device_ids JSON in InvoiceItem:', ii.returned_device_ids);
+              }
+            }
+
+            // Step 4: Compute Available = (All - Used) + Returned
+            const availableAssetSet = new Set(
+              [...allAssetSet].filter(id => !usedSet.has(id) || returnedSet.has(id))
+            );
+            const availableAssetIds = Array.from(availableAssetSet);
+
             return {
               ...item,
-              item_total_value: itemTotal
+              item_total_value: itemTotal,
+              available_asset_ids: availableAssetIds
             };
           })
         );
@@ -465,7 +547,8 @@ export const getAllOrdersApproved = async (req, res) => {
           ...orderJSON,
           total_quantity: totalQuantity,
           total_order_value: totalValue,
-          personal_details: order.personalDetails,
+          personal_details: orderJSON.personalDetails,
+          customer_details: order.customer,
           address: order.address,
           items: itemsWithValue
         };
@@ -474,13 +557,16 @@ export const getAllOrdersApproved = async (req, res) => {
 
     res.status(200).json(formattedOrders);
   } catch (error) {
-    console.error(error);
+    console.error('Error in getAllOrdersApproved:', error);
     res.status(500).json({
-      message: 'Error fetching approved orders',
+      message: 'Error fetching approved orders with remaining asset info',
       error
     });
   }
 };
+
+
+
 
 
 
@@ -523,16 +609,44 @@ export const getOrderById = async (req, res) => {
 
 
 // Delete Order
+// Delete Order
 export const deleteOrder = async (req, res) => {
   try {
     const {
       id
     } = req.params;
+
     const order = await Order.findByPk(id);
-    if (!order) return res.status(404).json({
-      message: 'Order not found'
+    if (!order) {
+      return res.status(404).json({
+        message: 'Order not found'
+      });
+    }
+
+    // STEP 1: Get all delivery_challans for this order
+    const deliveryChallans = await DeliveryChallan.findAll({
+      where: {
+        order_id: id
+      }
     });
 
+    // STEP 2: Delete delivery_challan_items for each challan
+    for (const challan of deliveryChallans) {
+      await DeliveryChallanItem.destroy({
+        where: {
+          challan_id: challan.id
+        }
+      });
+    }
+
+    // STEP 3: Delete delivery_challans
+    await DeliveryChallan.destroy({
+      where: {
+        order_id: id
+      }
+    });
+
+    // STEP 4: Delete related order data
     await OrderItem.destroy({
       where: {
         order_id: id
@@ -548,15 +662,17 @@ export const deleteOrder = async (req, res) => {
         order_id: id
       }
     });
+
+    // STEP 5: Finally delete the order
     await order.destroy();
 
     res.status(200).json({
-      message: 'Order and related data deleted successfully'
+      message: 'Order and all related data deleted successfully'
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
-      message: 'Error deleting order',
+      message: 'Error deleting order and related data',
       error
     });
   }

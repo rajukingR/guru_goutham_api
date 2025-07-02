@@ -13,6 +13,6 @@ router.post('/create', createCreditNote);
 router.get('/', getAllCreditNotes);
 router.get('/:id', getCreditNoteById);
 router.put('/update/:id', updateCreditNote);  // ✅ this should work now
-router.delete('/delete/:id', deleteCreditNote);
+router.delete('/:id', deleteCreditNote);
 
 export default router;

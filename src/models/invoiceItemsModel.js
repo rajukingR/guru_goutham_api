@@ -22,6 +22,22 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,     // ✅ Newly added
       defaultValue: 0,
     },
+    order_id: {
+  type: DataTypes.INTEGER,
+  allowNull: true,
+},
+device_ids: {
+  type: DataTypes.TEXT, // store as JSON stringified array
+  allowNull: true,
+  get() {
+    const rawValue = this.getDataValue('device_ids');
+    return rawValue ? JSON.parse(rawValue) : [];
+  },
+  set(value) {
+    this.setDataValue('device_ids', JSON.stringify(value));
+  },
+},
+
     unit_price: {
       type: DataTypes.DECIMAL(10, 2),
     },

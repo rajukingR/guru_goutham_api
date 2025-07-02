@@ -5,6 +5,13 @@ export default (sequelize, DataTypes) => {
       autoIncrement: true,
       primaryKey: true,
     },
+    dc_id: {
+      type: DataTypes.STRING,
+    },
+    order_id: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     invoice_number: {
       type: DataTypes.STRING,
       allowNull: false,

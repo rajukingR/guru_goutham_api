@@ -2,6 +2,7 @@ import express from 'express';
 import {
   createGRN,
   getAllGRNs,
+  getAllApprovedGRNs,
   getGRNById,
   updateGRN,
   deleteGRN
@@ -13,6 +14,7 @@ const router = express.Router();
 
 router.post('/create', createGRN);
 router.get('/', getAllGRNs);
+router.get('/approved-grns', getAllApprovedGRNs);
 router.get('/:id', getGRNById);
 router.put('/:id', updateGRN);
 router.delete('/:id', deleteGRN);

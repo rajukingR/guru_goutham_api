@@ -1,8 +1,9 @@
 import db from '../models/index.js';
-const { DeliveryChallan, DeliveryChallanItem,OrderItem,ProductTemplete  } = db;
+const { DeliveryChallan, DeliveryChallanItem,OrderItem,Order,ProductTemplete,Contact,GoodsReceiptItem  } = db;
 
 
 // Create Delivery Challan
+// Create Delivery Challan 
 export const createDeliveryChallan = async (req, res) => {
   try {
     const {
@@ -21,6 +22,7 @@ export const createDeliveryChallan = async (req, res) => {
       remarks,
       dc_file,
       type,
+      payment_type,
       regular_dc,
       industry,
       shipping_ordered_by,
@@ -56,6 +58,7 @@ export const createDeliveryChallan = async (req, res) => {
       remarks,
       dc_file,
       type,
+      payment_type,
       regular_dc,
       industry,
       shipping_ordered_by,
@@ -75,7 +78,11 @@ export const createDeliveryChallan = async (req, res) => {
     });
 
     if (items && Array.isArray(items)) {
-      const formattedItems = items.map(item => ({ ...item, challan_id: deliveryChallan.id }));
+      const formattedItems = items.map(item => ({
+        ...item,
+        challan_id: deliveryChallan.id,
+        device_ids: JSON.stringify(item.device_ids || []) // ✅ Ensure device_ids stored as JSON
+      }));
       await DeliveryChallanItem.bulkCreate(formattedItems);
     }
 
@@ -85,6 +92,7 @@ export const createDeliveryChallan = async (req, res) => {
     res.status(500).json({ message: 'Error creating delivery challan', error });
   }
 };
+
 
 // Get All Delivery Challans
 export const getAllDeliveryChallans = async (req, res) => {
@@ -101,6 +109,129 @@ export const getAllDeliveryChallans = async (req, res) => {
     res.status(500).json({ message: 'Error fetching delivery challans', error });
   }
 };
+export const getAllDeliveryChallanDelivered = async (req, res) => {
+  try {
+    // Step 1: Get GRN items
+    const grnItems = await GoodsReceiptItem.findAll({
+      attributes: ['product_id', 'asset_ids']
+    });
+
+    // Step 2: Get used device_ids from delivered challans
+    const usedItems = await DeliveryChallanItem.findAll({
+      include: [
+        {
+          model: DeliveryChallan,
+          as: 'challan',
+          where: { dc_status: 'Delivered' },
+          attributes: []
+        }
+      ],
+      attributes: ['product_id', 'device_ids']
+    });
+
+    // Step 3: Map used devices
+    const usedDeviceMap = {};
+    for (const item of usedItems) {
+      const productId = item.product_id;
+      const deviceIds = typeof item.device_ids === 'string'
+        ? JSON.parse(item.device_ids || '[]')
+        : item.device_ids || [];
+
+      if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
+      deviceIds.forEach(id => usedDeviceMap[productId].add(id));
+    }
+
+    // Step 4: Available devices = GRN - Used
+    const availableDeviceMap = {};
+    for (const grn of grnItems) {
+      const productId = grn.product_id;
+      const assetIds = typeof grn.asset_ids === 'string'
+        ? JSON.parse(grn.asset_ids || '[]')
+        : grn.asset_ids || [];
+
+      const used = usedDeviceMap[productId] || new Set();
+      const remaining = assetIds.filter(id => !used.has(id));
+      availableDeviceMap[productId] = remaining;
+    }
+
+    // Step 5: Fetch all delivered challans with associations
+    const allDeliveryChallans = await DeliveryChallan.findAll({
+      where: { dc_status: 'Delivered' },
+      include: [
+        {
+          model: DeliveryChallanItem,
+          as: 'items',
+          include: [
+            {
+              model: ProductTemplete,
+              as: 'product'
+            }
+          ]
+        },
+        {
+          model: Contact,
+          as: 'customer',
+          attributes: [
+            'id',
+            'first_name',
+            'last_name',
+            'customer_id',
+            'email',
+            'phone_number',
+            'company_name',
+            'gst',
+            'pan_no',
+            'address'
+          ],
+          required: false
+        },
+        {
+          model: Order,
+          as: 'order',
+          attributes: [
+            'id',
+            'customer_id',
+            'rental_start_date',
+            'rental_end_date',
+            'rental_duration',
+            'rental_duration_in_months',
+            'rental_duration_days'
+          ],
+          required: false
+        }
+      ],
+      order: [['id', 'DESC']] // Most recent first
+    });
+
+    // Step 6: Keep only latest challan per customer_code
+    const seenCustomerCodes = new Set();
+    const uniqueDeliveryChallans = [];
+
+    for (const dc of allDeliveryChallans) {
+      const customerCode = dc.customer_code;
+      if (!seenCustomerCodes.has(customerCode)) {
+        // Attach available_device_ids to each item
+        for (const item of dc.items) {
+          item.dataValues.available_device_ids = availableDeviceMap[item.product_id] || [];
+        }
+
+        uniqueDeliveryChallans.push(dc);
+        seenCustomerCodes.add(customerCode);
+      }
+    }
+
+    res.status(200).json(uniqueDeliveryChallans);
+  } catch (error) {
+    console.error('Error fetching unique delivered DCs:', error);
+    res.status(500).json({
+      message: 'Error fetching delivered delivery challans',
+      error
+    });
+  }
+};
+
+
+
 
 // Get Delivery Challan by ID
 export const getDeliveryChallanById = async (req, res) => {
@@ -187,6 +318,7 @@ export const updateDeliveryChallan = async (req, res) => {
       remarks,
       dc_file,
       type,
+      payment_type,
       regular_dc,
       industry,
       shipping_ordered_by,
@@ -224,6 +356,7 @@ export const updateDeliveryChallan = async (req, res) => {
       remarks,
       dc_file,
       type,
+      payment_type,
       regular_dc,
       industry,
       shipping_ordered_by,
@@ -246,7 +379,13 @@ export const updateDeliveryChallan = async (req, res) => {
     // Update DeliveryChallanItems
     if (items && Array.isArray(items)) {
       await DeliveryChallanItem.destroy({ where: { challan_id: id } });
-      const formattedItems = items.map(item => ({ ...item, challan_id: id }));
+
+      const formattedItems = items.map(item => ({
+        ...item,
+        challan_id: id,
+        device_ids: JSON.stringify(item.device_ids || []) // ✅ Ensure device_ids stored as JSON
+      }));
+
       await DeliveryChallanItem.bulkCreate(formattedItems);
     }
 
@@ -256,6 +395,7 @@ export const updateDeliveryChallan = async (req, res) => {
     res.status(500).json({ message: 'Error updating delivery challan', error });
   }
 };
+
 
 // Delete Delivery Challan
 export const deleteDeliveryChallan = async (req, res) => {

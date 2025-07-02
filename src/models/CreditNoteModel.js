@@ -1,5 +1,3 @@
-// models/CreditNoteModel.js
-
 export default (sequelize, DataTypes) => {
   const CreditNote = sequelize.define('CreditNote', {
     credit_note_number: {
@@ -30,6 +28,10 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
+    invoice_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     invoice_date: {
       type: DataTypes.DATEONLY,
       allowNull: true,
@@ -39,6 +41,10 @@ export default (sequelize, DataTypes) => {
       allowNull: true,
     },
     invoice_end_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
+    returned_date: {
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
@@ -91,6 +97,14 @@ export default (sequelize, DataTypes) => {
     timestamps: true,
     underscored: true,
   });
+
+  // Associations should be attached here using a separate function
+  CreditNote.associate = (models) => {
+    CreditNote.hasMany(models.CreditNoteItem, {
+      foreignKey: 'credit_note_id',
+      as: 'items',
+    });
+  };
 
   return CreditNote;
 };

@@ -17,6 +17,15 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false
     },
+    customer_id: {
+      type: DataTypes.INTEGER,
+    },
+    customer_first_name: {
+      type: DataTypes.STRING,
+    },
+    customer_last_name: {
+      type: DataTypes.STRING,
+    },
     rental_start_date: {
       type: DataTypes.DATE,
     },
@@ -29,8 +38,7 @@ export default (sequelize, DataTypes) => {
     rental_duration: {
       type: DataTypes.INTEGER,
     },
-            rental_duration_days: DataTypes.INTEGER,
-
+    rental_duration_days: DataTypes.INTEGER,
     remarks: {
       type: DataTypes.TEXT,
     },
@@ -54,14 +62,18 @@ export default (sequelize, DataTypes) => {
     timestamps: false,
   });
 
-
-   Quotation.associate = (models) => {
+  Quotation.associate = (models) => {
     Quotation.hasMany(models.QuotationItem, {
       foreignKey: 'quotation_id',
       as: 'items',
     });
-  };
 
+    Quotation.belongsTo(models.Contact, {
+  foreignKey: 'customer_id',
+  as: 'customer'
+});
+
+  };
 
   return Quotation;
 };

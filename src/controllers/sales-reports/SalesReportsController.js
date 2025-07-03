@@ -63,7 +63,6 @@ export const getSalesReport = async (req, res) => {
   }
 };
 
-
 export const getSalesAllLeads = async (req, res) => {
   try {
     const leadCounts = await Lead.findAll({
@@ -85,21 +84,18 @@ export const getSalesAllLeads = async (req, res) => {
   }
 };
 
-
-
-
 export const getAllSalesOrdersReport = async (req, res) => {
   try {
     const orders = await Order.findAll({
       include: [
         {
           model: OrderItem,
-          as: 'items', // This should match the alias used in your association
+          as: 'items', 
           attributes: ['requested_quantity', 'product_id'],
           include: [
             {
               model: ProductTemplete,
-              as: 'product', // Ensure this alias matches the defined Sequelize relation
+              as: 'product', 
               attributes: ['rent_price_per_month']
             }
           ]

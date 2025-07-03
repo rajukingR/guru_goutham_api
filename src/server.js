@@ -133,9 +133,13 @@ app.use('/api/states', stateRoutes);
 
 app.use('/api/sales-report', salesRoutes);
 
-
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));                    
-
-
+                     
 export default app;
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false, // ← ALLOWS cross-origin <img src="">
+  })
+);
+ 

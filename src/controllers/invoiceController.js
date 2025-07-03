@@ -12,6 +12,8 @@ const TaxType = db.TaxType;
 
 const Order = db.Order;
 const OrderItem = db.OrderItem;
+const AssetId = db.AssetId;
+const AssetModificationTracker = db.AssetModificationTracker;
 
 
 export const createInvoice = async (req, res) => {
@@ -22,8 +24,8 @@ export const createInvoice = async (req, res) => {
       });
     }
 
-    // ✅ Destructure and normalize fields
-    let {
+    // Destructure request body
+    const {
       order_id,
       invoice_number,
       invoice_title,
@@ -60,30 +62,17 @@ export const createInvoice = async (req, res) => {
       items
     } = req.body;
 
-    // ✅ Normalize function for integer fields
+    // Helper functions
     const normalizeInt = (val) => val === '' ? null : val;
-
-    // ✅ Normalize order_id to avoid Sequelize/MySQL insert errors
-    order_id = normalizeInt(order_id);
-    customer_id = normalizeInt(customer_id);
+    const getCurrentTimestamp = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     const formatDate = (input) => {
       if (!input) return null;
-      const dateParts = input.toString().split(/[-/]/);
-      if (dateParts.length !== 3) return null;
-      const isDayFirst = dateParts[0].length <= 2;
-      const day = isDayFirst ? dateParts[0] : dateParts[2];
-      const month = dateParts[1];
-      const year = isDayFirst ? dateParts[2] : dateParts[0];
-      const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-      return isNaN(new Date(formattedDate).getTime()) ? null : formattedDate;
+      const date = new Date(input);
+      return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
     };
 
-    const getCurrentTimestamp = () => {
-      const now = new Date();
-      return now.toISOString().replace('T', ' ').slice(0, 19);
-    };
-
+    // Format dates
     const formattedInvoiceStartDate = formatDate(invoice_start_date);
     const formattedInvoiceEndDate = formatDate(invoice_end_date);
     const formattedInvoiceDate = formatDate(invoice_date) || getCurrentTimestamp();
@@ -97,35 +86,29 @@ export const createInvoice = async (req, res) => {
     const formattedPurchaseOrderDate = formatDate(purchase_order_date);
     const formattedApprovalDate = formatDate(approval_date);
 
+    // Validate dates
     if (!formattedInvoiceStartDate || !formattedInvoiceEndDate) {
-      return res.status(400).json({
-        error: "Invalid invoice date range provided"
-      });
+      return res.status(400).json({ error: "Invalid invoice date range provided" });
     }
 
     const startDate = new Date(formattedInvoiceStartDate);
     const endDate = new Date(formattedInvoiceEndDate);
     const totalInvoiceDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
     if (totalInvoiceDays <= 0) {
-      return res.status(400).json({
-        error: "Invoice end date must be after start date"
-      });
+      return res.status(400).json({ error: "Invoice end date must be after start date" });
     }
 
+    // Get tax rates
     const tax = await TaxType.findOne({
-      where: {
-        tax_type_name: {
-          [Op.like]: '%GST%'
-        }
-      },
+      where: { tax_type_name: { [Op.like]: '%GST%' } },
     });
-
     const taxRate = tax ? tax.percentage : 18;
     const cgstRate = taxRate / 2;
     const sgstRate = taxRate / 2;
 
+    // Create invoice
     const invoice = await Invoice.create({
-      order_id,
+      order_id: normalizeInt(order_id),
       invoice_number,
       invoice_title,
       dc_id,
@@ -144,7 +127,7 @@ export const createInvoice = async (req, res) => {
       rental_end_date: formattedRentalEnd,
       purchase_order_date: formattedPurchaseOrderDate,
       purchase_order_number,
-      customer_id,
+      customer_id: normalizeInt(customer_id),
       customer_name,
       customer_gst_number,
       email,
@@ -166,10 +149,10 @@ export const createInvoice = async (req, res) => {
       created_at: getCurrentTimestamp(),
     });
 
+    // Process invoice items
     let invoiceAmount = 0;
     let totalCGST = 0;
     let totalSGST = 0;
-    let totalIGST = 0;
 
     for (const item of items) {
       const product = await ProductTemplete.findByPk(item.product_id);
@@ -184,19 +167,17 @@ export const createInvoice = async (req, res) => {
       const months = parseInt(item.rental_duration_months || 0);
       const days = parseInt(item.rental_duration_days || 0);
 
+      // Calculate pricing
       let total_price = 0;
-
       if (prevQty > 0) {
         total_price += rentPerMonth * prevQty * months;
         total_price += dailyRate * prevQty * days;
       }
-
       if (newQty > 0) {
         const addedDate = item.added_date ? new Date(formatDate(item.added_date)) : startDate;
         const effectiveDays = Math.ceil((endDate - addedDate) / (1000 * 60 * 60 * 24)) + 1;
         total_price += dailyRate * newQty * Math.max(0, effectiveDays);
       }
-
       if (returnQty > 0) {
         const returnedDate = item.returned_date ? new Date(formatDate(item.returned_date)) : endDate;
         const usedDays = Math.ceil((returnedDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
@@ -212,7 +193,8 @@ export const createInvoice = async (req, res) => {
       totalCGST += cgst;
       totalSGST += sgst;
 
-      await InvoiceItem.create({
+      // Create invoice item
+      const invoiceItem = await InvoiceItem.create({
         invoice_id: invoice.id,
         order_id,
         product_id: item.product_id,
@@ -230,37 +212,85 @@ export const createInvoice = async (req, res) => {
         rental_duration_days: days,
         new_quantity: newQty,
         return_quantity: returnQty,
-        device_ids: Array.isArray(item.device_ids) ?
-          JSON.stringify(item.device_ids) : typeof item.device_ids === 'string' ?
-          item.device_ids : null,
-        new_device_ids: Array.isArray(item.new_device_ids) ?
-          JSON.stringify(item.new_device_ids) : typeof item.new_device_ids === 'string' ?
-          item.new_device_ids : null,
-        returned_device_ids: Array.isArray(item.returned_device_ids) ?
-          JSON.stringify(item.returned_device_ids) : typeof item.returned_device_ids === 'string' ?
-          item.returned_device_ids : null,
-        added_date: newQty && Number(newQty) !== 0 ?
-          item.added_date ?
-          formatDate(item.added_date) :
-          getCurrentTimestamp() : null,
-        returned_date: returnQty && Number(returnQty) !== 0 ?
-          item.returned_date ?
-          formatDate(item.returned_date) :
-          getCurrentTimestamp() : null,
+        device_ids: Array.isArray(item.device_ids) ? JSON.stringify(item.device_ids) : item.device_ids,
+        new_device_ids: Array.isArray(item.new_device_ids) ? JSON.stringify(item.new_device_ids) : item.new_device_ids,
+        returned_device_ids: Array.isArray(item.returned_device_ids) ? JSON.stringify(item.returned_device_ids) : item.returned_device_ids,
+        added_date: newQty ? formatDate(item.added_date) || getCurrentTimestamp() : null,
+        returned_date: returnQty ? formatDate(item.returned_date) || getCurrentTimestamp() : null,
       });
+
+      // Process each device in device_ids
+      for (const deviceId of item.device_ids || []) {
+        const existingAsset = await AssetId.findOne({ where: { asset_id: deviceId } });
+
+        if (existingAsset) {
+          // Update existing asset with latest product specs
+          await existingAsset.update({
+            invoice_id: invoice.id,
+            product_id: product.id,
+            product_name: product.product_name,
+            ram: product.ram,
+            storage: product.storage,
+            processor: product.processor,
+            os: product.os,
+            graphics: product.graphics,
+            disk_type: product.disk_type,
+            brand: product.brand,
+            model: product.model,
+            grade: product.grade,
+            screen_size: product.screen_size,
+            resolution: product.resolution,
+            brightness: product.brightness,
+            power_consumption: product.power_consumption,
+            display_device: product.display_device,
+            audio_output: product.audio_output,
+            weight: product.weight,
+            color: product.color,
+            updated_at: new Date()
+          });
+        } else {
+          // Create new asset record with product specs
+          await AssetId.create({
+            invoice_id: invoice.id,
+            product_id: product.id,
+            asset_id: deviceId,
+            product_name: product.product_name,
+            ram: product.ram,
+            storage: product.storage,
+            processor: product.processor,
+            os: product.os,
+            graphics: product.graphics,
+            disk_type: product.disk_type,
+            brand: product.brand,
+            model: product.model,
+            grade: product.grade,
+            screen_size: product.screen_size,
+            resolution: product.resolution,
+            brightness: product.brightness,
+            power_consumption: product.power_consumption,
+            display_device: product.display_device,
+            audio_output: product.audio_output,
+            weight: product.weight,
+            color: product.color,
+            created_at: new Date(),
+            updated_at: new Date()
+          });
+        }
+      }
     }
 
+    // Update invoice totals
     const grandTotal = invoiceAmount + totalCGST + totalSGST;
-
     await invoice.update({
       amount: parseFloat(invoiceAmount.toFixed(2)),
       cgst: parseFloat(totalCGST.toFixed(2)),
       sgst: parseFloat(totalSGST.toFixed(2)),
-      igst: parseFloat(totalIGST.toFixed(2)),
+      igst: 0,
       total_tax: parseFloat((totalCGST + totalSGST).toFixed(2)),
       total_amount: parseFloat(grandTotal.toFixed(2)),
     });
 
+    // Add shipping details if provided
     if (shippingDetails) {
       await InvoiceShippingDetail.create({
         invoice_id: invoice.id,
@@ -282,13 +312,9 @@ export const createInvoice = async (req, res) => {
       invoice_id: invoice.id,
       invoice_number: invoice.invoice_number,
       total_amount: grandTotal.toFixed(2),
-      breakdown: {
-        subtotal: invoiceAmount.toFixed(2),
-        cgst: totalCGST.toFixed(2),
-        sgst: totalSGST.toFixed(2),
-        igst: totalIGST.toFixed(2)
-      }
+      asset_count: items.reduce((sum, item) => sum + (item.device_ids?.length || 0), 0)
     });
+
   } catch (error) {
     console.error("Error creating invoice:", error);
     return res.status(500).json({
@@ -297,7 +323,7 @@ export const createInvoice = async (req, res) => {
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
-};
+};;
 
 
 
@@ -360,24 +386,25 @@ export const getAllInvoices = async (req, res) => {
 export const getAllApprovedInvoices = async (req, res) => {
   try {
     const invoices = await Invoice.findAll({
-      where: { approval_status: 'Approved' },
-      include: [
-        {
+      where: {
+        approval_status: 'Approved'
+      },
+      include: [{
           model: InvoiceItem,
           as: 'items',
-          include: [
-            {
-              model: ProductTemplete,
-              as: 'productDetails',
-            },
-          ],
+          include: [{
+            model: ProductTemplete,
+            as: 'productDetails',
+          }, ],
         },
         {
           model: InvoiceShippingDetail,
           as: 'shippingDetail',
         },
       ],
-      order: [['id', 'DESC']],
+      order: [
+        ['id', 'DESC']
+      ],
     });
 
     // Process items to subtract returned quantity & devices
@@ -395,9 +422,9 @@ export const getAllApprovedInvoices = async (req, res) => {
           originalDevices = [];
         }
 
-        const returnedDevices = Array.isArray(item.returned_device_ids)
-          ? item.returned_device_ids
-          : [];
+        const returnedDevices = Array.isArray(item.returned_device_ids) ?
+          item.returned_device_ids :
+          [];
 
         // Filter out returned devices
         const remainingDevices = originalDevices.filter(
@@ -751,9 +778,9 @@ export const getInvoiceById = async (req, res) => {
     const order = await Order.findByPk(invoice.order_id);
 
     const order_date = order?.order_date || null;
-    const order_table_id = order?.order_id || null; // This is Order's PK
+    const order_table_id = order?.order_id || null;
 
-    // 3. Safely parse device ID fields
+    // 3. Helper to parse device ID fields
     const parseJSONSafe = (input) => {
       try {
         if (typeof input === 'string') return JSON.parse(input);
@@ -763,41 +790,75 @@ export const getInvoiceById = async (req, res) => {
       }
     };
 
-    const updatedItems = invoice.items.map((item) => {
+    // 4. Process invoice items and enrich with asset_modification data
+    const updatedItems = [];
+
+    for (const item of invoice.items) {
       const device_ids = parseJSONSafe(item.device_ids);
       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
       const remaining_device_ids = device_ids.filter(
         (id) => !returned_device_ids.includes(id)
       );
 
-      return {
+      const enrichedAssets = [];
+
+      for (const asset_id of remaining_device_ids) {
+        const modification = await AssetModificationTracker.findOne({
+          where: {
+            invoice_id: invoice.id,
+            asset_id: asset_id,
+            [Op.or]: [
+              { new_ram: { [Op.ne]: null } },
+              { new_ram_cost: { [Op.ne]: null } },
+              { new_storage: { [Op.ne]: null } },
+              { new_storage_cost: { [Op.ne]: null } },
+              {approval_date: { [Op.ne]: null},}
+            ],
+          },
+          attributes: [
+            'asset_id',
+            'ram',
+            'new_ram',
+            'new_ram_cost',
+            'storage',
+            'new_storage',
+            'new_storage_cost',
+            'approval_date',
+          ],
+        });
+
+        if (modification) {
+          enrichedAssets.push(modification);
+        }
+      }
+
+      updatedItems.push({
         ...item.toJSON(),
         device_ids,
         returned_device_ids,
         remaining_device_ids,
-      };
-    });
+        asset_modifications: enrichedAssets,
+      });
+    }
 
-    // 4. Final response
+    // Final invoice response
     const invoiceJSON = invoice.toJSON();
     invoiceJSON.items = updatedItems;
-    invoiceJSON.rental_start_date = invoice.rental_start_date;
-    invoiceJSON.rental_end_date = invoice.rental_end_date;
-
-    // ✅ Add order details from Order table (not invoice table)
     invoiceJSON.order_table_id = order_table_id;
     invoiceJSON.order_date = order_date;
+    invoiceJSON.rental_start_date = invoice.rental_start_date;
+    invoiceJSON.rental_end_date = invoice.rental_end_date;
 
     return res.status(200).json(invoiceJSON);
   } catch (error) {
     console.error('Error fetching invoice:', error);
     res.status(500).json({
       message: 'Internal server error',
-      error:
-        process.env.NODE_ENV === 'development' ? error.message : undefined,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
+
 
 
 

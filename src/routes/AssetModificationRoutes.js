@@ -1,4 +1,3 @@
-// routes/AssetModificationRoutes.js
 import express from 'express';
 import {
   createAssetModification,
@@ -6,7 +5,7 @@ import {
   getAssetModificationById,
   updateAssetModification,
   deleteAssetModification
-} from '../controllers/AssetModificationTrackerController.js';
+} from '../controllers/assetModificationTrackerController.js';
 
 const router = express.Router();
 

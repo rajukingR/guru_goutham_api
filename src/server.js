@@ -8,8 +8,8 @@ import db from './config/db.js';
 import parentRouter from './routes/parentRouter.js';
 import userRoutes from './routes/userDetailsRoutes.js';
 import productRoutes from './routes/productRoutes.js';
-import supplierRoutes from './routes/supplierRoutes.js'; 
-import PurchaseQuotationRoutes from './routes/PurchaseQuotationRoutes.js'; 
+import supplierRoutes from './routes/supplierRoutes.js';
+import PurchaseQuotationRoutes from './routes/PurchaseQuotationRoutes.js';
 import purchaseOrdersRoutes from './routes/purchaseOrdersRoutes.js';
 import goodsReceiptRoutes from './routes/goodsReceiptRoutes.js';
 import contactsRoutes from './routes/contactsRoutes.js';
@@ -33,33 +33,42 @@ import taxListRoutes from './routes/taxListRoutes.js';
 import branchRoutes from "./routes/branchRoutes.js";
 import GoodsReturnNoteRoutes from "./routes/GoodsReturnNoteRoutes.js";
 import productServiceRoutes from './routes/ProductServiceRoutes.js';
-import assetRoutes from './routes/AssetModificationRoutes.js';
 import CreditNoteRoutes from './routes/CreditNoteRoutes.js';
 import clientRoutes from './routes/clientDetailsRoutes.js';
 
+import assetRoutesTracker from './routes/AssetRoutes.js';
+import assetModificationRoutes from './routes/assetModificationRoutes.js';
+import ramSpecRoutes from './routes/ramSpecRoutes.js'; // Adjust path as needed
 
 
-import { fileURLToPath } from 'url';
-const __filename = fileURLToPath(import.meta.url);
+import {
+  fileURLToPath
+} from 'url';
+const __filename = fileURLToPath(
+  import.meta.url);
 const __dirname = path.dirname(__filename);
 
 
 
 // Load environment variables from appropriate file
 dotenv.config({
-  path:
-    process.env.NODE_ENV === 'production'
-      ? '.env.production'
-      : process.env.NODE_ENV === 'development'
-      ? '.env.development'
-      : '.env',
+  path: process.env.NODE_ENV === 'production' ?
+    '.env.production' :
+    process.env.NODE_ENV === 'development' ?
+    '.env.development' :
+    '.env',
 });
 
 const app = express();
 
 //**  Middlewares **//
-app.use(express.json()); 
-app.use(helmet());
+app.use(express.json());
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false, // ← ALLOWS cross-origin <img src="">
+  })
+);
 
 // CORS setup
 const allowedOrigins = [
@@ -87,6 +96,7 @@ db.authenticate()
 
 app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
 
+
 app.use('/api', parentRouter)
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
@@ -106,7 +116,7 @@ app.use('/api/clients', clientsRoutes);
 app.use('/api/contact-types', contactTypeRoutes);
 app.use('/api/tax-types', taxTypeRoutes);
 app.use('/api/purchase-requests', purchaseRequestsRoutes);
-app.use('/api/product-templete', productTempleteRoutes);                                               
+app.use('/api/product-templete', productTempleteRoutes);
 app.use('/api/product-categories', productCategoriesRoutes);
 app.use('/api/product-brands', brandRoutes);
 app.use('/api/stock-location', stockLocationRoutes);
@@ -115,13 +125,15 @@ app.use('/api/tax-list', taxListRoutes);
 app.use("/api/branches", branchRoutes);
 app.use("/api/goods-return-notes", grnRoutes);
 app.use('/api/product-services', productServiceRoutes);
-app.use('/api/asset-modifications', assetRoutes);
 app.use('/api/credit-notes', CreditNoteRoutes);
 app.use('/api/user', clientRoutes);
+app.use('/api/asset-modification', assetRoutesTracker);
+app.use('/api/asset-modifications', assetModificationRoutes);
+app.use('/api/ram-specs', ramSpecRoutes);
 
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));                    
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 
 export default app;

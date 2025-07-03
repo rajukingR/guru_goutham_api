@@ -32,6 +32,12 @@ export default (sequelize, DataTypes) => {
         new_storage: {
             type: DataTypes.STRING
         },
+        new_ram_cost: {
+            type: DataTypes.DECIMAL(10, 2)
+        },
+        new_storage_cost: {
+            type: DataTypes.DECIMAL(10, 2)
+        },
         processor: {
             type: DataTypes.STRING
         },

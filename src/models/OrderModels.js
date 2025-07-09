@@ -66,6 +66,16 @@ Order.associate = (models) => {
     foreignKey: 'order_id',
     as: 'grns',
   });
+
+   Order.belongsTo(models.Quotation, {
+      foreignKey: 'quotation_id',
+      as: 'quotation'
+    });
+
+    models.Quotation.hasMany(Order, {
+      foreignKey: 'quotation_id',
+      as: 'orders'
+    });
 };
 
 

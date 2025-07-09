@@ -548,7 +548,6 @@ export const getAllOrdersApproved = async (req, res) => {
           total_quantity: totalQuantity,
           total_order_value: totalValue,
           personal_details: orderJSON.personalDetails,
-          customer_details: order.customer,
           address: order.address,
           items: itemsWithValue
         };

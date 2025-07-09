@@ -112,3 +112,34 @@ export const getAllAssetModifications = async (req, res) => {
     });
   }
 };
+
+
+export const getAllAssetIds = async (req, res) => {
+  try {
+    const assets = await AssetId.findAll();
+    res.status(200).json(assets);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error fetching asset IDs", error });
+  }
+};
+
+// Get single Asset ID by ID
+export const getAssetIdsByProductId = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const assets = await db.AssetId.findAll({
+      where: { product_id: id },
+    });
+
+    if (!assets || assets.length === 0) {
+      return res.status(404).json({ message: "No assets found for this product" });
+    }
+
+    res.status(200).json(assets);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error fetching asset IDs by product ID", error });
+  }
+};

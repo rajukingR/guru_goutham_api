@@ -83,5 +83,14 @@ export default (sequelize, DataTypes) => {
     timestamps: false
   });
 
+  Contact.associate = (models) => {
+  Contact.hasMany(models.DispatchOrder, {
+    foreignKey: 'customer_code',
+    sourceKey: 'id',
+    as: 'dispatch_orders'
+  });
+};
+
+
   return Contact;
 };

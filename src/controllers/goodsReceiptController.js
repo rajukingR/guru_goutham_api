@@ -8,11 +8,12 @@ const {
   ProductTemplete,
   DeliveryChallan,
   DeliveryChallanItem,
-   Invoice,
+  Invoice,
   InvoiceItem,
+  AssetId,
+
 } = db;
 
-// Create a new Goods Receipt with Items
 export const createGoodsReceipt = async (req, res) => {
   try {
     const {
@@ -28,7 +29,7 @@ export const createGoodsReceipt = async (req, res) => {
       items = []
     } = req.body;
 
-    // 1. Check if goods_receipt_id already exists
+    // 1. Check for duplicate goods_receipt_id
     const existing = await GoodsReceipt.findOne({
       where: {
         goods_receipt_id
@@ -40,17 +41,16 @@ export const createGoodsReceipt = async (req, res) => {
       });
     }
 
-    // 2. Extract all incoming asset IDs
+    // 2. Extract incoming asset IDs
     const incomingAssetIds = items.flatMap(item => item.asset_ids || []);
 
-    // 3. Fetch all existing asset_ids from DB
+    // 3. Get existing asset_ids from DB
     const existingItems = await GoodsReceiptItem.findAll({
       attributes: ['asset_ids']
     });
-
     const existingAssetIds = [];
     for (const item of existingItems) {
-      const ids = item.asset_ids || []; // thanks to your model getter, this is already parsed
+      const ids = item.asset_ids || [];
       existingAssetIds.push(...ids);
     }
 
@@ -76,26 +76,65 @@ export const createGoodsReceipt = async (req, res) => {
       description
     });
 
-    // 6. Create receipt items
-    const receiptItems = items.map(item => ({
-      goods_receipt_id: receipt.id,
-      product_id: item.product_id,
-      product_name: item.product_name,
-      quantity: item.quantity,
-      asset_ids: item.asset_ids || [],
-    }));
+    // 6. Create GoodsReceiptItems
+    const receiptItems = await GoodsReceiptItem.bulkCreate(
+      items.map(item => ({
+        goods_receipt_id: receipt.id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        asset_ids: item.asset_ids || [],
+      }))
+    );
 
-    await GoodsReceiptItem.bulkCreate(receiptItems);
+    // 7. Create AssetId entries for each asset_id
+    const assetEntries = [];
 
-    res.status(201).json({
-      message: "Goods receipt created successfully",
-      receipt
+    for (const item of items) {
+      const product = await ProductTemplete.findByPk(item.product_id);
+
+      if (!product) continue;
+
+      for (const assetId of item.asset_ids || []) {
+        assetEntries.push({
+          invoice_id: receipt.id, // or pass invoice_id explicitly if you use Invoice model
+          product_id: item.product_id,
+          asset_id: assetId,
+          product_name: item.product_name,
+          ram: product.ram,
+          storage: product.storage,
+          processor: product.processor,
+          os: product.os,
+          graphics: product.graphics,
+          disk_type: product.disk_type,
+          brand: product.brand,
+          model: product.model,
+          grade: product.grade,
+          screen_size: product.screen_size,
+          resolution: product.resolution,
+          brightness: product.brightness,
+          power_consumption: product.power_consumption,
+          display_device: product.display_device,
+          audio_output: product.audio_output,
+          weight: product.weight,
+          color: product.color,
+        });
+      }
+    }
+
+    if (assetEntries.length > 0) {
+      await AssetId.bulkCreate(assetEntries);
+    }
+
+    return res.status(201).json({
+      message: "Goods receipt and assets created successfully",
+      receipt,
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Error creating goods receipt",
-      error
+      error: error.message
     });
   }
 };
@@ -152,7 +191,9 @@ export const getApprovedProductSummary = async (req, res) => {
   try {
     // 1. Get Approved Goods Receipts
     const approvedReceipts = await GoodsReceipt.findAll({
-      where: { goods_receipt_status: 'Approved' },
+      where: {
+        goods_receipt_status: 'Approved'
+      },
       attributes: ['id'],
     });
 
@@ -166,7 +207,9 @@ export const getApprovedProductSummary = async (req, res) => {
 
     // 2. Get GoodsReceiptItems for approved receipts
     const receiptItems = await GoodsReceiptItem.findAll({
-      where: { goods_receipt_id: approvedReceiptIds },
+      where: {
+        goods_receipt_id: approvedReceiptIds
+      },
       attributes: ['product_id', 'quantity', 'asset_ids'],
     });
 
@@ -183,7 +226,7 @@ export const getApprovedProductSummary = async (req, res) => {
       assetMap[productId].push(...assets);
     }
 
-    // 3. Get all used and returned device IDs from InvoiceItems
+    // 3. Get used/returned device IDs from Invoices
     const invoiceItems = await InvoiceItem.findAll({
       attributes: ['product_id', 'device_ids', 'returned_device_ids']
     });
@@ -194,7 +237,6 @@ export const getApprovedProductSummary = async (req, res) => {
     for (const item of invoiceItems) {
       const productId = item.product_id;
 
-      // Used device IDs
       try {
         const usedIds = Array.isArray(item.device_ids) ? item.device_ids : JSON.parse(item.device_ids || '[]');
         if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
@@ -203,7 +245,6 @@ export const getApprovedProductSummary = async (req, res) => {
         console.warn('Invalid device_ids JSON:', item.device_ids);
       }
 
-      // Returned device IDs
       try {
         const returnedIds = Array.isArray(item.returned_device_ids) ? item.returned_device_ids : JSON.parse(item.returned_device_ids || '[]');
         if (!returnedDeviceMap[productId]) returnedDeviceMap[productId] = new Set();
@@ -213,7 +254,31 @@ export const getApprovedProductSummary = async (req, res) => {
       }
     }
 
-    // 4. Bulk fetch product details
+    // 3.5 Include used device_ids from Delivered DCs (correct alias: 'challan')
+    const deliveredChallanItems = await DeliveryChallanItem.findAll({
+      include: [
+        {
+          model: DeliveryChallan,
+          as: 'challan', // ✅ alias as defined in model
+          where: { dc_status: 'Delivered' },
+          attributes: [],
+        },
+      ],
+      attributes: ['product_id', 'device_ids']
+    });
+
+    for (const item of deliveredChallanItems) {
+      const productId = item.product_id;
+      try {
+        const deliveredIds = Array.isArray(item.device_ids) ? item.device_ids : JSON.parse(item.device_ids || '[]');
+        if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
+        deliveredIds.forEach(id => usedDeviceMap[productId].add(id));
+      } catch (err) {
+        console.warn('Invalid delivery_challan device_ids JSON:', item.device_ids);
+      }
+    }
+
+    // 4. Get product details
     const productIds = Object.keys(quantityMap).map(Number);
     const productTemplates = await ProductTemplete.findAll({
       where: { id: productIds }
@@ -224,39 +289,35 @@ export const getApprovedProductSummary = async (req, res) => {
     let totalUsedCount = 0;
     let grandTotalAmount = 0;
 
-const result = productIds.map(productId => {
-  const totalQty = quantityMap[productId];
-  const allAssets = assetMap[productId] || [];
+    const result = productIds.map(productId => {
+      const totalQty = quantityMap[productId];
+      const allAssets = assetMap[productId] || [];
 
-  const usedSet = usedDeviceMap[productId] || new Set();
-  const returnedSet = returnedDeviceMap[productId] || new Set();
+      const usedSet = usedDeviceMap[productId] || new Set();
+      const returnedSet = returnedDeviceMap[productId] || new Set();
 
-  // Reusable: (All - Used) + Returned
-  const availableAssets = allAssets.filter(id => !usedSet.has(id) || returnedSet.has(id));
+      const availableAssets = allAssets.filter(id => !usedSet.has(id) || returnedSet.has(id));
+      const netUsedSet = new Set([...usedSet].filter(id => !returnedSet.has(id)));
+      const usedQty = netUsedSet.size;
 
-  // Net used quantity = Used - Returned
-  const netUsedSet = new Set([...usedSet].filter(id => !returnedSet.has(id)));
-  const usedQty = netUsedSet.size;
+      const product = productMap[productId];
+      const purchasePrice = parseFloat(product?.purchase_price || 0);
+      const totalValue = totalQty * purchasePrice;
 
-  const product = productMap[productId];
-  const purchasePrice = parseFloat(product?.purchase_price || 0);
-  const totalValue = totalQty * purchasePrice;
+      totalUsedCount += usedQty;
+      grandTotalAmount += totalValue;
 
-  totalUsedCount += usedQty;
-  grandTotalAmount += totalValue;
-
-  return {
-    product_id: productId,
-    total_quantity: totalQty,
-    used_quantity: usedQty,
-    available_quantity: availableAssets.length,
-    purchase_price: purchasePrice,
-    total_value: totalValue,
-    asset_ids: availableAssets,
-    product,
-  };
-});
-
+      return {
+        product_id: productId,
+        total_quantity: totalQty,
+        used_quantity: usedQty,
+        available_quantity: availableAssets.length,
+        purchase_price: purchasePrice,
+        total_value: totalValue,
+        asset_ids: availableAssets,
+        product,
+      };
+    });
 
     res.status(200).json({
       summary: {
@@ -273,6 +334,8 @@ const result = productIds.map(productId => {
     });
   }
 };
+
+
 
 
 

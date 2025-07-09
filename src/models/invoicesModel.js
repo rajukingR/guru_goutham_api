@@ -25,6 +25,9 @@ export default (sequelize, DataTypes) => {
     customer_name: {
       type: DataTypes.STRING,
     },
+     transaction_type: {
+      type: DataTypes.STRING,
+    },
     invoice_date: {
       type: DataTypes.DATE,
     },

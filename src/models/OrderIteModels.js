@@ -1,7 +1,6 @@
 export default (sequelize, DataTypes) => {
   const OrderItem = sequelize.define(
-    'OrderItem',
-    {
+    'OrderItem', {
       id: {
         type: DataTypes.INTEGER,
         autoIncrement: true,
@@ -24,15 +23,21 @@ export default (sequelize, DataTypes) => {
           this.setDataValue('device_ids', JSON.stringify(value));
         },
       },
-    },
-    {
+    }, {
       tableName: 'order_products',
       timestamps: false,
     }
   );
 
   OrderItem.associate = (models) => {
-    OrderItem.belongsTo(models.Order, { foreignKey: 'order_id' });
+    OrderItem.belongsTo(models.Order, {
+      foreignKey: 'order_id'
+    });
+    OrderItem.belongsTo(models.ProductTemplete, {
+      foreignKey: 'product_id',
+      as: 'product',
+    });
+
   };
 
   return OrderItem;

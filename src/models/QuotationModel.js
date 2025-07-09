@@ -13,6 +13,12 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false
     },
+    transaction_type: {
+      type: DataTypes.STRING,
+    },
+    payment_type: {
+      type: DataTypes.STRING,
+    },
     lead_id: {
       type: DataTypes.INTEGER,
       allowNull: false
@@ -69,9 +75,9 @@ export default (sequelize, DataTypes) => {
     });
 
     Quotation.belongsTo(models.Contact, {
-  foreignKey: 'customer_id',
-  as: 'customer'
-});
+      foreignKey: 'customer_id',
+      as: 'customer'
+    });
 
   };
 

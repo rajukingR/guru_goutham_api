@@ -1,6 +1,6 @@
 import db from '../models/index.js';
 
-const AssetModificationTracker = db.AssetModificationTracker;
+const AssetModification = db.AssetModification;
 const AssetId = db.AssetId;
 
 export const createAssetModification = async (req, res) => {
@@ -8,7 +8,7 @@ export const createAssetModification = async (req, res) => {
     const data = req.body;
 
     // Step 1: Create the asset modification record
-    const newRecord = await AssetModificationTracker.create(data);
+    const newRecord = await AssetModification.create(data);
 
     // Step 2: Update asset_ids table if new RAM or storage is present
     const { invoice_id, asset_id, new_ram, new_storage, new_ram_cost, new_storage_cost } = data;
@@ -22,7 +22,6 @@ export const createAssetModification = async (req, res) => {
 
       await AssetId.update(updateData, {
         where: {
-          invoice_id,
           asset_id,
         },
       });
@@ -48,7 +47,7 @@ export const createAssetModification = async (req, res) => {
 // ✅ Get all asset modification records
 export const getAllAssetModifications = async (req, res) => {
   try {
-    const records = await AssetModificationTracker.findAll({
+    const records = await AssetModification.findAll({
       order: [['updated_at', 'DESC']],
     });
 
@@ -71,7 +70,7 @@ export const getAllAssetModifications = async (req, res) => {
 export const getAssetModificationById = async (req, res) => {
   try {
     const id = req.params.id;
-    const record = await AssetModificationTracker.findByPk(id);
+    const record = await AssetModification.findByPk(id);
 
     if (!record) {
       return res.status(404).json({
@@ -101,7 +100,7 @@ export const updateAssetModification = async (req, res) => {
     const id = req.params.id;
     const updates = req.body;
 
-    const [affectedRows] = await AssetModificationTracker.update(updates, {
+    const [affectedRows] = await AssetModification.update(updates, {
       where: { id },
     });
 
@@ -112,7 +111,7 @@ export const updateAssetModification = async (req, res) => {
       });
     }
 
-    const updatedRecord = await AssetModificationTracker.findByPk(id);
+    const updatedRecord = await AssetModification.findByPk(id);
 
     res.status(200).json({
       success: true,
@@ -133,7 +132,7 @@ export const updateAssetModification = async (req, res) => {
 export const deleteAssetModification = async (req, res) => {
   try {
     const id = req.params.id;
-    const deleted = await AssetModificationTracker.destroy({
+    const deleted = await AssetModification.destroy({
       where: { id },
     });
 

@@ -39,6 +39,8 @@ import clientRoutes from './routes/clientDetailsRoutes.js';
 import assetRoutesTracker from './routes/AssetRoutes.js';
 import assetModificationRoutes from './routes/assetModificationRoutes.js';
 import ramSpecRoutes from './routes/ramSpecRoutes.js'; // Adjust path as needed
+import stateRoutes from './routes/salesRoutes.js';
+import dispatchOrderRoutes from "./routes/dispatchOrderRoutes.js";
 
 
 import {
@@ -130,6 +132,8 @@ app.use('/api/user', clientRoutes);
 app.use('/api/asset-modification', assetRoutesTracker);
 app.use('/api/asset-modifications', assetModificationRoutes);
 app.use('/api/ram-specs', ramSpecRoutes);
+app.use('/api/sales-report', stateRoutes);
+app.use("/api/dispatch-orders", dispatchOrderRoutes);
 
 
 const PORT = process.env.PORT || 5000;

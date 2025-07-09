@@ -13,7 +13,7 @@ const TaxType = db.TaxType;
 const Order = db.Order;
 const OrderItem = db.OrderItem;
 const AssetId = db.AssetId;
-const AssetModificationTracker = db.AssetModificationTracker;
+const AssetModification = db.AssetModification;
 
 
 export const createInvoice = async (req, res) => {
@@ -36,6 +36,7 @@ export const createInvoice = async (req, res) => {
       previous_delivered_end_date,
       credit_note_start_date,
       credit_note_end_date,
+      transaction_type,
       duration,
       rental_duration_months,
       rental_duration_days,
@@ -111,6 +112,7 @@ export const createInvoice = async (req, res) => {
       order_id: normalizeInt(order_id),
       invoice_number,
       invoice_title,
+      transaction_type,
       dc_id,
       invoice_date: formattedInvoiceDate,
       invoice_due_date: formattedInvoiceDueDate,
@@ -369,42 +371,60 @@ export const createInvoice = async (req, res) => {
 
 
 // // // Get all invoices
+
+
+
 export const getAllInvoices = async (req, res) => {
   try {
-    const invoices = await Invoice.findAll();
+    const invoices = await Invoice.findAll({
+      include: [
+        {
+          model: InvoiceItem,
+          as: "items", // adjust if your alias is different
+          attributes: ["id", "product_id", "returned_date"], // include returned_date
+        },
+      ],
+      order: [["created_at", "DESC"]],
+    });
+
     res.status(200).json(invoices);
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching invoices:", error);
     res.status(500).json({
       message: "Error fetching invoices",
-      error
+      error,
     });
   }
 };
+
 
 
 export const getAllApprovedInvoices = async (req, res) => {
   try {
     const invoices = await Invoice.findAll({
       where: {
-        approval_status: 'Approved'
+        approval_status: 'Approved',
+        transaction_type: {
+          [Op.ne]: 'Buy', // ✅ Exclude "Buy" transactions
+        },
       },
-      include: [{
+      include: [
+        {
           model: InvoiceItem,
           as: 'items',
-          include: [{
-            model: ProductTemplete,
-            as: 'productDetails',
-          }, ],
+          include: [
+            {
+              model: ProductTemplete,
+              as: 'productDetails',
+            },
+          ],
         },
         {
           model: InvoiceShippingDetail,
           as: 'shippingDetail',
         },
       ],
-      order: [
-        ['id', 'DESC']
-      ],
+      order: [['id', 'DESC']],
     });
 
     // Process items to subtract returned quantity & devices
@@ -422,9 +442,9 @@ export const getAllApprovedInvoices = async (req, res) => {
           originalDevices = [];
         }
 
-        const returnedDevices = Array.isArray(item.returned_device_ids) ?
-          item.returned_device_ids :
-          [];
+        const returnedDevices = Array.isArray(item.returned_device_ids)
+          ? item.returned_device_ids
+          : [];
 
         // Filter out returned devices
         const remainingDevices = originalDevices.filter(
@@ -453,6 +473,7 @@ export const getAllApprovedInvoices = async (req, res) => {
     });
   }
 };
+
 
 
 
@@ -774,13 +795,12 @@ export const getInvoiceById = async (req, res) => {
       return res.status(404).json({ message: 'Invoice not found' });
     }
 
-    // 2. Fetch order using invoice.order_id (FK to Order.id)
+    // 2. Fetch related order details
     const order = await Order.findByPk(invoice.order_id);
-
     const order_date = order?.order_date || null;
     const order_table_id = order?.order_id || null;
 
-    // 3. Helper to parse device ID fields
+    // 3. Parse device fields safely
     const parseJSONSafe = (input) => {
       try {
         if (typeof input === 'string') return JSON.parse(input);
@@ -790,58 +810,23 @@ export const getInvoiceById = async (req, res) => {
       }
     };
 
-    // 4. Process invoice items and enrich with asset_modification data
-    const updatedItems = [];
-
-    for (const item of invoice.items) {
+    // 4. Format invoice items (without asset_modifications)
+    const updatedItems = invoice.items.map((item) => {
       const device_ids = parseJSONSafe(item.device_ids);
       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
       const remaining_device_ids = device_ids.filter(
         (id) => !returned_device_ids.includes(id)
       );
 
-      const enrichedAssets = [];
-
-      for (const asset_id of remaining_device_ids) {
-        const modification = await AssetModificationTracker.findOne({
-          where: {
-            invoice_id: invoice.id,
-            asset_id: asset_id,
-            [Op.or]: [
-              { new_ram: { [Op.ne]: null } },
-              { new_ram_cost: { [Op.ne]: null } },
-              { new_storage: { [Op.ne]: null } },
-              { new_storage_cost: { [Op.ne]: null } },
-              {approval_date: { [Op.ne]: null},}
-            ],
-          },
-          attributes: [
-            'asset_id',
-            'ram',
-            'new_ram',
-            'new_ram_cost',
-            'storage',
-            'new_storage',
-            'new_storage_cost',
-            'approval_date',
-          ],
-        });
-
-        if (modification) {
-          enrichedAssets.push(modification);
-        }
-      }
-
-      updatedItems.push({
+      return {
         ...item.toJSON(),
         device_ids,
         returned_device_ids,
         remaining_device_ids,
-        asset_modifications: enrichedAssets,
-      });
-    }
+      };
+    });
 
-    // Final invoice response
+    // 5. Build final response
     const invoiceJSON = invoice.toJSON();
     invoiceJSON.items = updatedItems;
     invoiceJSON.order_table_id = order_table_id;
@@ -858,6 +843,7 @@ export const getInvoiceById = async (req, res) => {
     });
   }
 };
+
 
 
 
@@ -904,6 +890,7 @@ export const updateInvoice = async (req, res) => {
       order_id,
       invoice_number,
       invoice_title,
+      transaction_type,
       dc_id,
       invoice_start_date,
       invoice_end_date,
@@ -1005,6 +992,7 @@ export const updateInvoice = async (req, res) => {
       order_id,
       invoice_number,
       invoice_title,
+      transaction_type,
       dc_id,
       invoice_date: formattedInvoiceDate,
       invoice_due_date: formattedInvoiceDueDate,

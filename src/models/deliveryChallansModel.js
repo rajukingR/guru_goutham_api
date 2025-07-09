@@ -19,6 +19,10 @@ export default (sequelize, DataTypes) => {
     order_id: {
       type: DataTypes.INTEGER,
     },
+    dispatch_order_id: {
+  type: DataTypes.INTEGER,
+},
+
     customer_code: {
       type: DataTypes.INTEGER, // ✅ MATCH contacts.id if integer
     },
@@ -129,10 +133,12 @@ export default (sequelize, DataTypes) => {
       as: 'customer',
     });
 
-    DeliveryChallan.belongsTo(models.Order, {
-      foreignKey: 'order_id',
-      as: 'order',
+    
+    DeliveryChallan.belongsTo(models.DispatchOrder, {
+      foreignKey: 'dispatch_order_id',
+      as: 'dispatch_order',
     });
+
   };
 
   return DeliveryChallan;

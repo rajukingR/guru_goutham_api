@@ -1,5 +1,5 @@
 import db from '../models/index.js';
-const { DeliveryChallan, DeliveryChallanItem,OrderItem,Order,ProductTemplete,Contact,GoodsReceiptItem  } = db;
+const { DeliveryChallan, DeliveryChallanItem,OrderItem,Order,DispatchOrder,ProductTemplete,Contact,GoodsReceiptItem  } = db;
 
 
 // Create Delivery Challan
@@ -11,6 +11,7 @@ export const createDeliveryChallan = async (req, res) => {
       dc_title,
       is_dc,
       order_id,
+      dispatch_order_id,
       customer_code,
       order_number,
       dc_date,
@@ -47,6 +48,7 @@ export const createDeliveryChallan = async (req, res) => {
       dc_title,
       is_dc,
       order_id,
+      dispatch_order_id:order_id,
       customer_code,
       order_number,
       dc_date,
@@ -109,6 +111,7 @@ export const getAllDeliveryChallans = async (req, res) => {
     res.status(500).json({ message: 'Error fetching delivery challans', error });
   }
 };
+
 export const getAllDeliveryChallanDelivered = async (req, res) => {
   try {
     // Step 1: Get GRN items
@@ -186,21 +189,13 @@ export const getAllDeliveryChallanDelivered = async (req, res) => {
           required: false
         },
         {
-          model: Order,
-          as: 'order',
-          attributes: [
-            'id',
-            'customer_id',
-            'rental_start_date',
-            'rental_end_date',
-            'rental_duration',
-            'rental_duration_in_months',
-            'rental_duration_days'
-          ],
+          model: DispatchOrder,
+          as: 'dispatch_order', // ✅ correct alias from model
+          
           required: false
         }
       ],
-      order: [['id', 'DESC']] // Most recent first
+      order: [['id', 'DESC']]
     });
 
     // Step 6: Keep only latest challan per customer_code
@@ -210,7 +205,6 @@ export const getAllDeliveryChallanDelivered = async (req, res) => {
     for (const dc of allDeliveryChallans) {
       const customerCode = dc.customer_code;
       if (!seenCustomerCodes.has(customerCode)) {
-        // Attach available_device_ids to each item
         for (const item of dc.items) {
           item.dataValues.available_device_ids = availableDeviceMap[item.product_id] || [];
         }
@@ -233,21 +227,20 @@ export const getAllDeliveryChallanDelivered = async (req, res) => {
 
 
 
-// Get Delivery Challan by ID
 export const getDeliveryChallanById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Step 1: Get Delivery Challan with items and their products
+    // Step 1: Fetch delivery challan with items and products
     const deliveryChallan = await DeliveryChallan.findByPk(id, {
       include: [
         {
           model: DeliveryChallanItem,
-          as: 'items',
+          as: "items",
           include: [
             {
               model: ProductTemplete,
-              as: 'product',
+              as: "product",
             },
           ],
         },
@@ -255,47 +248,43 @@ export const getDeliveryChallanById = async (req, res) => {
     });
 
     if (!deliveryChallan) {
-      return res.status(404).json({ message: 'Delivery Challan not found' });
+      return res.status(404).json({ message: "Delivery Challan not found" });
     }
 
     const deliveryChallanData = deliveryChallan.toJSON();
 
-    // Step 2: Add device_ids from OrderItem for each product in the delivery challan
-    const enrichedItems = await Promise.all(
-      deliveryChallanData.items.map(async (item) => {
-        const orderItem = await OrderItem.findOne({
-          where: {
-            order_id: deliveryChallanData.order_id,
-            product_id: item.product_id,
-          },
-        });
-
-        return {
-          ...item,
-          device_ids: orderItem?.device_ids || [],
-        };
-      })
-    );
+    // Step 2: Parse device_ids if needed (already handled in model's getter)
+    const enrichedItems = deliveryChallanData.items.map((item) => {
+      // Sequelize model getter already parses JSON
+      return {
+        ...item,
+        device_ids: item.device_ids || [],
+      };
+    });
 
     // Step 3: Calculate totals
-    const totalQuantity = enrichedItems.reduce((sum, item) => sum + item.quantity, 0);
+    const totalQuantity = enrichedItems.reduce(
+      (sum, item) => sum + (item.quantity || 0),
+      0
+    );
     const totalPrice = enrichedItems.reduce(
       (sum, item) => sum + parseFloat(item.total_price || 0),
       0
     );
 
-    // Step 4: Final Response
-    const response = {
+    // Step 4: Return response
+    return res.status(200).json({
       ...deliveryChallanData,
-      items: enrichedItems, // with product and device_ids, no product_details
+      items: enrichedItems,
       totalQuantity,
       totalPrice,
-    };
-
-    res.status(200).json(response);
+    });
   } catch (error) {
-    console.error('Error fetching delivery challan:', error);
-    res.status(500).json({ message: 'Error fetching delivery challan', error });
+    console.error("Error fetching delivery challan:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      error,
+    });
   }
 };
 

@@ -1,0 +1,138 @@
+import db from "../models/index.js";
+
+const DispatchOrder = db.DispatchOrder;
+const DispatchOrderItem = db.DispatchOrderItem;
+const Contact = db.Contact;
+
+// ✅ Create Dispatch Order with Items
+export const createDispatchOrder = async (req, res) => {
+  try {
+    const {
+      items,
+      ...orderData
+    } = req.body;
+
+    const newOrder = await DispatchOrder.create(orderData);
+
+    if (items && Array.isArray(items)) {
+      const enrichedItems = items.map((item) => ({
+        ...item,
+        dispatch_order_id: newOrder.id,
+      }));
+      await DispatchOrderItem.bulkCreate(enrichedItems);
+    }
+
+    res.status(201).json({ message: "Dispatch order created", order: newOrder });
+  } catch (err) {
+    console.error("Create error:", err);
+    res.status(500).json({ message: "Failed to create dispatch order", error: err.message });
+  }
+};
+
+// ✅ Get All Dispatch Orders (with items)
+export const getAllDispatchOrders = async (req, res) => {
+  try {
+    const orders = await DispatchOrder.findAll({
+      include: [{ model: DispatchOrderItem, as: "items" }],
+      order: [["id", "DESC"]],
+    });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch orders", error: err.message });
+  }
+};
+
+export const getAllApprovedDispatchOrders = async (req, res) => {
+  try {
+    const approvedOrders = await DispatchOrder.findAll({
+      where: { dispatch_order_status: "Approved" },
+      include: [
+        {
+          model: db.DispatchOrderItem,
+          as: "items"
+        },
+        {
+          model: db.Contact,
+          as: "contact"
+        }
+      ],
+      order: [["id", "DESC"]],
+    });
+
+    res.json(approvedOrders);
+  } catch (err) {
+    console.error("Error fetching approved dispatch orders:", err);
+    res.status(500).json({
+      message: "Failed to fetch approved dispatch orders",
+      error: err.message,
+    });
+  }
+};
+
+
+
+// ✅ Get Dispatch Order by ID
+export const getDispatchOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = await DispatchOrder.findByPk(id, {
+      include: [{ model: DispatchOrderItem, as: "items" }],
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Dispatch order not found" });
+    }
+
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch order", error: err.message });
+  }
+};
+
+// ✅ Update Dispatch Order and Its Items
+export const updateDispatchOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      items,
+      ...orderData
+    } = req.body;
+
+    const order = await DispatchOrder.findByPk(id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    await order.update(orderData);
+
+    if (items && Array.isArray(items)) {
+      await DispatchOrderItem.destroy({ where: { dispatch_order_id: id } });
+      const newItems = items.map((item) => ({
+        ...item,
+        dispatch_order_id: id,
+      }));
+      await DispatchOrderItem.bulkCreate(newItems);
+    }
+
+    res.json({ message: "Dispatch order updated", order });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to update order", error: err.message });
+  }
+};
+
+// ✅ Delete Dispatch Order (and its items via cascade)
+export const deleteDispatchOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await DispatchOrder.findByPk(id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    await order.destroy();
+    res.json({ message: "Dispatch order deleted" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to delete order", error: err.message });
+  }
+};

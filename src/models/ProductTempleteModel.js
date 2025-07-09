@@ -162,6 +162,10 @@ export default (sequelize, DataTypes) => {
   foreignKey: 'product_id',
   as: 'grn_items'
 });
+ProductTemplete.hasMany(models.OrderItem, {
+  foreignKey: 'product_id',
+  as: 'order_items'
+});
 
   
 };

@@ -1,5 +1,5 @@
 export default (sequelize, DataTypes) => {
-    const AssetModificationTracker = sequelize.define('AssetModificationTracker', {
+    const AssetModification = sequelize.define('AssetModification', {
         id: {
             type: DataTypes.INTEGER,
             primaryKey: true,
@@ -140,5 +140,5 @@ export default (sequelize, DataTypes) => {
         underscored: true
     });
 
-    return AssetModificationTracker;
+    return AssetModification;
 };

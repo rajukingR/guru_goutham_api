@@ -28,12 +28,29 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       get() {
         const rawValue = this.getDataValue('device_ids');
-        return rawValue ? JSON.parse(rawValue) : [];
+        try {
+          return rawValue ? JSON.parse(rawValue) : [];
+        } catch (err) {
+          console.warn("Failed to parse device_ids:", rawValue);
+          return [];
+        }
       },
       set(value) {
-        this.setDataValue('device_ids', JSON.stringify(value));
+        // 🛑 Prevent double encoding
+        if (typeof value === "string") {
+          try {
+            // If it's already a stringified array, parse it first
+            const parsed = JSON.parse(value);
+            this.setDataValue('device_ids', JSON.stringify(parsed));
+          } catch {
+            this.setDataValue('device_ids', "[]"); // fallback to empty
+          }
+        } else {
+          this.setDataValue('device_ids', JSON.stringify(value || []));
+        }
       },
     },
+
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,

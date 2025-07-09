@@ -46,6 +46,15 @@ export default (sequelize, DataTypes) => {
             foreignKey: 'lead_id',
             as: 'lead_products'
         });
+        Lead.hasMany(models.Quotation, {
+            foreignKey: 'lead_id',
+            as: 'quotations'
+        });
+
+        models.Quotation.belongsTo(Lead, {
+            foreignKey: 'lead_id',
+            as: 'lead'
+        });
     };
 
 

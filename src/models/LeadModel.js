@@ -8,6 +8,8 @@ export default (sequelize, DataTypes) => {
         lead_id: DataTypes.STRING,
         lead_title: DataTypes.STRING,
         transaction_type: DataTypes.STRING,
+                payment_type: DataTypes.STRING,
+
         lead_source: DataTypes.STRING,
         source_of_enquiry: DataTypes.STRING,
         rental_duration_months: DataTypes.INTEGER,

@@ -14,7 +14,8 @@ const Order = db.Order;
 const OrderItem = db.OrderItem;
 const AssetId = db.AssetId;
 const AssetModification = db.AssetModification;
-
+const CreditNote = db.CreditNote;
+const CreditNoteItem = db.CreditNoteItem;
 
 export const createInvoice = async (req, res) => {
   try {
@@ -30,6 +31,9 @@ export const createInvoice = async (req, res) => {
       invoice_number,
       invoice_title,
       dc_id,
+      dc_date,
+      dispatch_order_number,
+      dispatch_order_id,
       invoice_start_date,
       invoice_end_date,
       previous_delivered_start_date,
@@ -89,19 +93,27 @@ export const createInvoice = async (req, res) => {
 
     // Validate dates
     if (!formattedInvoiceStartDate || !formattedInvoiceEndDate) {
-      return res.status(400).json({ error: "Invalid invoice date range provided" });
+      return res.status(400).json({
+        error: "Invalid invoice date range provided"
+      });
     }
 
     const startDate = new Date(formattedInvoiceStartDate);
     const endDate = new Date(formattedInvoiceEndDate);
     const totalInvoiceDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
     if (totalInvoiceDays <= 0) {
-      return res.status(400).json({ error: "Invoice end date must be after start date" });
+      return res.status(400).json({
+        error: "Invoice end date must be after start date"
+      });
     }
 
     // Get tax rates
     const tax = await TaxType.findOne({
-      where: { tax_type_name: { [Op.like]: '%GST%' } },
+      where: {
+        tax_type_name: {
+          [Op.like]: '%GST%'
+        }
+      },
     });
     const taxRate = tax ? tax.percentage : 18;
     const cgstRate = taxRate / 2;
@@ -114,6 +126,9 @@ export const createInvoice = async (req, res) => {
       invoice_title,
       transaction_type,
       dc_id,
+      dc_date,
+      dispatch_order_number,
+      dispatch_order_id,
       invoice_date: formattedInvoiceDate,
       invoice_due_date: formattedInvoiceDueDate,
       invoice_start_date: formattedInvoiceStartDate,
@@ -223,7 +238,11 @@ export const createInvoice = async (req, res) => {
 
       // Process each device in device_ids
       for (const deviceId of item.device_ids || []) {
-        const existingAsset = await AssetId.findOne({ where: { asset_id: deviceId } });
+        const existingAsset = await AssetId.findOne({
+          where: {
+            asset_id: deviceId
+          }
+        });
 
         if (existingAsset) {
           // Update existing asset with latest product specs
@@ -380,14 +399,49 @@ export const getAllInvoices = async (req, res) => {
       include: [
         {
           model: InvoiceItem,
-          as: "items", // adjust if your alias is different
-          attributes: ["id", "product_id", "returned_date"], // include returned_date
+          as: "items",
+          attributes: ["id", "product_id", "returned_date"],
         },
       ],
       order: [["created_at", "DESC"]],
     });
 
-    res.status(200).json(invoices);
+    // Get all dispatch_order_ids
+    const dispatchOrderIds = invoices.map((inv) => inv.dispatch_order_id).filter(Boolean);
+
+    // Fetch all credit notes with returned_date grouped by dispatch_order_id
+    const creditNotes = await db.CreditNote.findAll({
+      where: {
+        dispatch_order_id: {
+          [Op.in]: dispatchOrderIds,
+        },
+        returned_date: {
+          [Op.not]: null,
+        },
+      },
+      attributes: ["dispatch_order_id", "returned_date"],
+    });
+
+    const groupedReturns = {};
+    creditNotes.forEach((note) => {
+      if (!groupedReturns[note.dispatch_order_id]) {
+        groupedReturns[note.dispatch_order_id] = [];
+      }
+      groupedReturns[note.dispatch_order_id].push(note.returned_date);
+    });
+
+    // Merge returned_date into invoice list
+    const finalResult = invoices.map((inv) => {
+  const returnedDates = groupedReturns[inv.dispatch_order_id] || [];
+
+  return {
+    ...inv.toJSON(),
+    credit_note_returned_dates: returnedDates.length > 0 ? returnedDates[0] : null, // or use .at(-1) for latest
+  };
+});
+
+
+    res.status(200).json(finalResult);
   } catch (error) {
     console.error("Error fetching invoices:", error);
     res.status(500).json({
@@ -399,32 +453,36 @@ export const getAllInvoices = async (req, res) => {
 
 
 
+
+
 export const getAllApprovedInvoices = async (req, res) => {
   try {
     const invoices = await Invoice.findAll({
       where: {
         approval_status: 'Approved',
         transaction_type: {
-          [Op.ne]: 'Buy', // ✅ Exclude "Buy" transactions
+          [Op.ne]: 'Buy',
+        },
+        payment_mode: {
+          [Op.ne]: 'Postpaid',
         },
       },
-      include: [
-        {
+      include: [{
           model: InvoiceItem,
           as: 'items',
-          include: [
-            {
-              model: ProductTemplete,
-              as: 'productDetails',
-            },
-          ],
+          include: [{
+            model: ProductTemplete,
+            as: 'productDetails',
+          }, ],
         },
         {
           model: InvoiceShippingDetail,
           as: 'shippingDetail',
         },
       ],
-      order: [['id', 'DESC']],
+      order: [
+        ['id', 'DESC']
+      ],
     });
 
     // Process items to subtract returned quantity & devices
@@ -442,9 +500,8 @@ export const getAllApprovedInvoices = async (req, res) => {
           originalDevices = [];
         }
 
-        const returnedDevices = Array.isArray(item.returned_device_ids)
-          ? item.returned_device_ids
-          : [];
+        const returnedDevices = Array.isArray(item.returned_device_ids) ?
+          item.returned_device_ids : [];
 
         // Filter out returned devices
         const remainingDevices = originalDevices.filter(
@@ -792,7 +849,9 @@ export const getInvoiceById = async (req, res) => {
     });
 
     if (!invoice) {
-      return res.status(404).json({ message: 'Invoice not found' });
+      return res.status(404).json({
+        message: 'Invoice not found',
+      });
     }
 
     // 2. Fetch related order details
@@ -810,7 +869,7 @@ export const getInvoiceById = async (req, res) => {
       }
     };
 
-    // 4. Format invoice items (without asset_modifications)
+    // 4. Format invoice items
     const updatedItems = invoice.items.map((item) => {
       const device_ids = parseJSONSafe(item.device_ids);
       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
@@ -826,13 +885,33 @@ export const getInvoiceById = async (req, res) => {
       };
     });
 
-    // 5. Build final response
+    // 5. Fetch related credit notes using dispatch_order_id
+    const creditNotes = await CreditNote.findAll({
+      where: {
+        dispatch_order_id: invoice.dispatch_order_id,
+      },
+      include: [
+        {
+          model: CreditNoteItem,
+          as: 'items',
+        },
+      ],
+    });
+
+    // 6. Convert credit notes to JSON format
+    const formattedCreditNotes = creditNotes.map((note) => ({
+      ...note.toJSON(),
+      items: note.items || [],
+    }));
+
+    // 7. Build final response
     const invoiceJSON = invoice.toJSON();
     invoiceJSON.items = updatedItems;
     invoiceJSON.order_table_id = order_table_id;
     invoiceJSON.order_date = order_date;
     invoiceJSON.rental_start_date = invoice.rental_start_date;
     invoiceJSON.rental_end_date = invoice.rental_end_date;
+    invoiceJSON.credit_notes = formattedCreditNotes;
 
     return res.status(200).json(invoiceJSON);
   } catch (error) {
@@ -843,6 +922,7 @@ export const getInvoiceById = async (req, res) => {
     });
   }
 };
+
 
 
 
@@ -892,6 +972,9 @@ export const updateInvoice = async (req, res) => {
       invoice_title,
       transaction_type,
       dc_id,
+      dc_date,
+      dispatch_order_number,
+      dispatch_order_id,
       invoice_start_date,
       invoice_end_date,
       previous_delivered_start_date,
@@ -994,6 +1077,9 @@ export const updateInvoice = async (req, res) => {
       invoice_title,
       transaction_type,
       dc_id,
+      dispatch_order_number,
+      dispatch_order_id,
+      dc_date,
       invoice_date: formattedInvoiceDate,
       invoice_due_date: formattedInvoiceDueDate,
       invoice_start_date: formattedInvoiceStartDate,

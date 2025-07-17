@@ -20,8 +20,11 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
     },
     dispatch_order_id: {
-  type: DataTypes.INTEGER,
-},
+      type: DataTypes.INTEGER,
+    },
+    dispatch_order_number: {
+      type: DataTypes.STRING,
+    },
 
     customer_code: {
       type: DataTypes.INTEGER, // ✅ MATCH contacts.id if integer
@@ -133,7 +136,7 @@ export default (sequelize, DataTypes) => {
       as: 'customer',
     });
 
-    
+
     DeliveryChallan.belongsTo(models.DispatchOrder, {
       foreignKey: 'dispatch_order_id',
       as: 'dispatch_order',

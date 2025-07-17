@@ -1,6 +1,8 @@
 import db from '../models/index.js';
 const { DeliveryChallan, DeliveryChallanItem,OrderItem,Order,DispatchOrder,ProductTemplete,Contact,GoodsReceiptItem  } = db;
 
+const CreditNote = db.CreditNote;
+const CreditNoteItem = db.CreditNoteItem;
 
 // Create Delivery Challan
 // Create Delivery Challan 
@@ -12,6 +14,7 @@ export const createDeliveryChallan = async (req, res) => {
       is_dc,
       order_id,
       dispatch_order_id,
+      dispatch_order_number,
       customer_code,
       order_number,
       dc_date,
@@ -49,6 +52,7 @@ export const createDeliveryChallan = async (req, res) => {
       is_dc,
       order_id,
       dispatch_order_id:order_id,
+      dispatch_order_number,
       customer_code,
       order_number,
       dc_date,
@@ -114,115 +118,92 @@ export const getAllDeliveryChallans = async (req, res) => {
 
 export const getAllDeliveryChallanDelivered = async (req, res) => {
   try {
-    // Step 1: Get GRN items
-    const grnItems = await GoodsReceiptItem.findAll({
-      attributes: ['product_id', 'asset_ids']
+    // Step 1: Fetch all CreditNotes and CreditNoteItems
+    const allCreditNotes = await CreditNote.findAll({
+      include: [{ model: CreditNoteItem, as: 'items' }]
     });
 
-    // Step 2: Get used device_ids from delivered challans
-    const usedItems = await DeliveryChallanItem.findAll({
-      include: [
-        {
-          model: DeliveryChallan,
-          as: 'challan',
-          where: { dc_status: 'Delivered' },
-          attributes: []
+    // Step 2: Build a map of returned devices by dc_id and product_id
+    const returnedDeviceMap = {};
+    for (const note of allCreditNotes) {
+      const dcId = Number(note.dc_id);
+      if (!returnedDeviceMap[dcId]) returnedDeviceMap[dcId] = {};
+
+      for (const item of note.items) {
+        const productId = item.product_id;
+        const returnedDevices = Array.isArray(item.device_ids)
+          ? item.device_ids
+          : JSON.parse(item.device_ids || '[]');
+
+        if (!returnedDeviceMap[dcId][productId]) {
+          returnedDeviceMap[dcId][productId] = new Set();
         }
-      ],
-      attributes: ['product_id', 'device_ids']
-    });
 
-    // Step 3: Map used devices
-    const usedDeviceMap = {};
-    for (const item of usedItems) {
-      const productId = item.product_id;
-      const deviceIds = typeof item.device_ids === 'string'
-        ? JSON.parse(item.device_ids || '[]')
-        : item.device_ids || [];
-
-      if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
-      deviceIds.forEach(id => usedDeviceMap[productId].add(id));
+        returnedDevices.forEach(id => returnedDeviceMap[dcId][productId].add(id));
+      }
     }
 
-    // Step 4: Available devices = GRN - Used
-    const availableDeviceMap = {};
-    for (const grn of grnItems) {
-      const productId = grn.product_id;
-      const assetIds = typeof grn.asset_ids === 'string'
-        ? JSON.parse(grn.asset_ids || '[]')
-        : grn.asset_ids || [];
-
-      const used = usedDeviceMap[productId] || new Set();
-      const remaining = assetIds.filter(id => !used.has(id));
-      availableDeviceMap[productId] = remaining;
-    }
-
-    // Step 5: Fetch all delivered challans with associations
+    // Step 3: Fetch Delivered DCs with full associations
     const allDeliveryChallans = await DeliveryChallan.findAll({
       where: { dc_status: 'Delivered' },
       include: [
         {
           model: DeliveryChallanItem,
           as: 'items',
-          include: [
-            {
-              model: ProductTemplete,
-              as: 'product'
-            }
-          ]
+          include: [{ model: ProductTemplete, as: 'product' }]
         },
         {
           model: Contact,
           as: 'customer',
           attributes: [
-            'id',
-            'first_name',
-            'last_name',
-            'customer_id',
-            'email',
-            'phone_number',
-            'company_name',
-            'gst',
-            'pan_no',
-            'address'
+            'id', 'first_name', 'last_name', 'customer_id',
+            'email', 'phone_number', 'company_name', 'gst',
+            'pan_no', 'address'
           ],
           required: false
         },
         {
           model: DispatchOrder,
-          as: 'dispatch_order', // ✅ correct alias from model
-          
+          as: 'dispatch_order',
           required: false
         }
       ],
       order: [['id', 'DESC']]
     });
 
-    // Step 6: Keep only latest challan per customer_code
-    const seenCustomerCodes = new Set();
-    const uniqueDeliveryChallans = [];
-
+    // Step 4: Adjust each item's device_ids and quantity
     for (const dc of allDeliveryChallans) {
-      const customerCode = dc.customer_code;
-      if (!seenCustomerCodes.has(customerCode)) {
-        for (const item of dc.items) {
-          item.dataValues.available_device_ids = availableDeviceMap[item.product_id] || [];
-        }
+      const dcId = dc.id;
 
-        uniqueDeliveryChallans.push(dc);
-        seenCustomerCodes.add(customerCode);
+      for (const item of dc.items) {
+        const productId = item.product_id;
+
+        const deviceIds = Array.isArray(item.device_ids)
+          ? item.device_ids
+          : JSON.parse(item.device_ids || '[]');
+
+        const returnedSet = returnedDeviceMap[dcId]?.[productId] ?? new Set();
+
+        const filteredDeviceIds = deviceIds.filter(id => !returnedSet.has(id));
+
+        // ✅ Update the item
+        item.device_ids = filteredDeviceIds;
+        item.quantity = filteredDeviceIds.length;
       }
     }
 
-    res.status(200).json(uniqueDeliveryChallans);
+    return res.status(200).json(allDeliveryChallans);
   } catch (error) {
-    console.error('Error fetching unique delivered DCs:', error);
-    res.status(500).json({
+    console.error('Error fetching delivered DCs:', error);
+    return res.status(500).json({
       message: 'Error fetching delivered delivery challans',
-      error
+      error: error.message
     });
   }
 };
+
+
+
 
 
 
@@ -298,6 +279,8 @@ export const updateDeliveryChallan = async (req, res) => {
       order_id,
       customer_code,
       order_number,
+      dispatch_order_number,
+      dispatch_order_id,
       dc_date,
       dc_status,
       dealer_reference,
@@ -336,6 +319,8 @@ export const updateDeliveryChallan = async (req, res) => {
       order_id,
       customer_code,
       order_number,
+      dispatch_order_number:order_id,
+      dispatch_order_id,
       dc_date,
       dc_status,
       dealer_reference,

@@ -4,8 +4,8 @@ const QuotationItem = db.QuotationItem;
 const Product = db.Product;
 const Lead = db.Lead;
 const GoodsReceiptItem = db.GoodsReceiptItem;
-const Order =  db.Order;
-const OrderItem =  db.OrderItem;
+const Order = db.Order;
+const OrderItem = db.OrderItem;
 const Contact = db.Contact;
 
 export const createQuotation = async (req, res) => {
@@ -20,6 +20,7 @@ export const createQuotation = async (req, res) => {
       rental_duration,
       rental_duration_days,
       transaction_type,
+      payment_type,
       remarks,
       quotation_generated_by,
       status,
@@ -39,6 +40,7 @@ export const createQuotation = async (req, res) => {
       rental_duration,
       rental_duration_days,
       transaction_type,
+      payment_type,
       quotation_generated_by,
       status,
       customer_id,
@@ -72,8 +74,7 @@ export const createQuotation = async (req, res) => {
       error
     });
   }
-};
-;
+};;
 
 
 // Get all quotations
@@ -99,18 +100,17 @@ export const getAllQuotations = async (req, res) => {
 export const getAllQuotationsApproved = async (req, res) => {
   try {
     const quotations = await Quotation.findAll({
-      where: { status: 'Approved' },
-      include: [
-        {
+      where: {
+        status: 'Approved'
+      },
+      include: [{
           model: QuotationItem,
           as: 'items',
-          include: [
-            {
-              model: db.GoodsReceiptItem,
-              as: 'goodsReceiptItems',
-              attributes: ['id', 'goods_receipt_id', 'product_id', 'asset_ids'],
-            },
-          ],
+          include: [{
+            model: db.GoodsReceiptItem,
+            as: 'goodsReceiptItems',
+            attributes: ['id', 'goods_receipt_id', 'product_id', 'asset_ids'],
+          }, ],
         },
         {
           model: Contact,
@@ -139,14 +139,14 @@ export const getAllQuotationsApproved = async (req, res) => {
     });
 
     const approvedOrders = await Order.findAll({
-      where: { order_status: 'Approved' },
-      include: [
-        {
-          model: OrderItem,
-          as: 'items',
-          attributes: ['product_id', 'device_ids'],
-        },
-      ],
+      where: {
+        order_status: 'Approved'
+      },
+      include: [{
+        model: OrderItem,
+        as: 'items',
+        attributes: ['product_id', 'device_ids'],
+      }, ],
     });
 
     const usedDeviceMap = {};
@@ -157,9 +157,9 @@ export const getAllQuotationsApproved = async (req, res) => {
         let deviceIds = [];
 
         try {
-          deviceIds = Array.isArray(item.device_ids)
-            ? item.device_ids
-            : JSON.parse(item.device_ids || '[]');
+          deviceIds = Array.isArray(item.device_ids) ?
+            item.device_ids :
+            JSON.parse(item.device_ids || '[]');
         } catch (err) {
           console.warn('Invalid device_ids JSON:', item.device_ids);
         }
@@ -234,7 +234,9 @@ export const getQuotationById = async (req, res) => {
 // Update quotation
 export const updateQuotation = async (req, res) => {
   try {
-    const { id } = req.params;
+    const {
+      id
+    } = req.params;
     const {
       quotation_title,
       // rental_start_date,
@@ -243,6 +245,7 @@ export const updateQuotation = async (req, res) => {
       rental_duration,
       rental_duration_days,
       transaction_type,
+      payment_type,
       remarks,
       quotation_generated_by,
       status,
@@ -252,7 +255,9 @@ export const updateQuotation = async (req, res) => {
     } = req.body;
 
     const quotation = await Quotation.findByPk(id);
-    if (!quotation) return res.status(404).json({ message: 'Quotation not found' });
+    if (!quotation) return res.status(404).json({
+      message: 'Quotation not found'
+    });
 
     await quotation.update({
       quotation_title,
@@ -262,6 +267,7 @@ export const updateQuotation = async (req, res) => {
       rental_duration,
       rental_duration_days,
       transaction_type,
+      payment_type,
       remarks,
       quotation_generated_by,
       status,

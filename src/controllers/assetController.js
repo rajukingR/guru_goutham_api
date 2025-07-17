@@ -116,13 +116,14 @@ export const getAllAssetModifications = async (req, res) => {
 
 export const getAllAssetIds = async (req, res) => {
   try {
-    const assets = await AssetId.findAll();
-    res.status(200).json(assets);
+    const assetIds = await AssetId.findAll();
+    res.status(200).json(assetIds);
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching asset IDs:", error);
     res.status(500).json({ message: "Error fetching asset IDs", error });
   }
 };
+
 
 // Get single Asset ID by ID
 export const getAssetIdsByProductId = async (req, res) => {

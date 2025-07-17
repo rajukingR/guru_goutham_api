@@ -9,18 +9,20 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
-    order_id: {
-  type: DataTypes.STRING,
-  allowNull: true, // or false, if required
-},
-
+    dispatch_order_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    dispatch_order_number: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     grn_title: {
       type: DataTypes.STRING,
     },
-customer_id: {
-  type: DataTypes.STRING,
-},
-
+    customer_id: {
+      type: DataTypes.STRING,
+    },
     customer_name: {
       type: DataTypes.STRING,
     },
@@ -45,8 +47,6 @@ customer_id: {
     industry: {
       type: DataTypes.STRING,
     },
-
-    // Address Details
     company_name: {
       type: DataTypes.STRING,
     },
@@ -68,8 +68,6 @@ customer_id: {
     pincode: {
       type: DataTypes.STRING,
     },
-
-    // Person Info
     informed_person_name: {
       type: DataTypes.STRING,
     },
@@ -97,11 +95,9 @@ customer_id: {
     vehicle_number: {
       type: DataTypes.STRING,
     },
-
     invoice_number: {
       type: DataTypes.STRING,
     },
-
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
@@ -113,26 +109,25 @@ customer_id: {
   }, {
     tableName: 'grn',
     timestamps: false,
+    underscored: true,
   });
 
+  GRN.associate = (models) => {
+    GRN.hasMany(models.GRNItem, {
+      foreignKey: 'grn_id',
+      as: 'items',
+    });
+    
+    GRN.belongsTo(models.Order, {
+      foreignKey: 'dispatch_order_id',
+      as: 'order',
+    });
 
-GRN.associate = (models) => {
-  GRN.hasMany(models.GRNItem, {
-    foreignKey: 'grn_id',
-    as: 'items',
-  });
-  GRN.belongsTo(models.Order, {
-    foreignKey: 'order_id',
-    as: 'order',
-  });
-  GRN.belongsTo(models.Contact, {
-  foreignKey: 'customer_id',
-  as: 'customer_details'
-});
-
-};
-
-
+    GRN.belongsTo(models.Contact, {
+      foreignKey: 'customer_id',
+      as: 'customer_details'
+    });
+  };
 
   return GRN;
 };

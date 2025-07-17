@@ -1,22 +1,24 @@
 import db from '../models/index.js';
+
 const {
   GRN,
   GRNItem,
   ProductTemplete,
   Contact,
   Order,
-  OrderItem,
-   Invoice,
-   InvoiceItem ,
-   GoodsReceiptItem,
+  Invoice,
+  InvoiceItem,
+  GoodsReceiptItem
 } = db;
 
+// Create GRN
 export const createGRN = async (req, res) => {
   try {
     const {
       grn_id,
       grn_title,
-      order_id,
+      dispatch_order_id,
+      dispatch_order_number,
       customer_id,
       customer_select,
       email_id,
@@ -42,13 +44,14 @@ export const createGRN = async (req, res) => {
       grn_status,
       vehicle_number,
       invoice_number,
-      products: items // ✅ Renaming from products to items
+      products: items
     } = req.body;
 
     const grn = await GRN.create({
       grn_number: grn_id,
       grn_title,
-      order_id,
+      dispatch_order_id,
+      dispatch_order_number,
       customer_id,
       customer_name: customer_select,
       email: email_id,
@@ -74,7 +77,7 @@ export const createGRN = async (req, res) => {
       description,
       grn_status,
       vehicle_number,
-      invoice_number: order_id
+      invoice_number
     });
 
     if (items && Array.isArray(items)) {
@@ -90,30 +93,22 @@ export const createGRN = async (req, res) => {
       await GRNItem.bulkCreate(formattedItems);
     }
 
-    res.status(201).json({
-      message: 'GRN created successfully',
-      grn
-    });
+    res.status(201).json({ message: 'GRN created successfully', grn });
   } catch (error) {
     console.error('Create GRN error:', error);
-    res.status(500).json({
-      message: 'Error creating GRN',
-      error
-    });
+    res.status(500).json({ message: 'Error creating GRN', error });
   }
 };
-
 
 // Update GRN
 export const updateGRN = async (req, res) => {
   try {
-    const {
-      id
-    } = req.params;
+    const { id } = req.params;
     const {
       grn_number,
       grn_title,
-      order_id,
+      dispatch_order_id,
+      dispatch_order_number,
       customer_id,
       customer_name,
       email,
@@ -138,21 +133,19 @@ export const updateGRN = async (req, res) => {
       receiver_phone,
       description,
       grn_status,
-
       vehicle_number,
       invoice_number,
       items
     } = req.body;
 
     const grn = await GRN.findByPk(id);
-    if (!grn) return res.status(404).json({
-      message: 'GRN not found'
-    });
+    if (!grn) return res.status(404).json({ message: 'GRN not found' });
 
     await grn.update({
       grn_number,
       grn_title,
-      order_id,
+      dispatch_order_id,
+      dispatch_order_number,
       customer_id,
       customer_name,
       email,
@@ -177,67 +170,57 @@ export const updateGRN = async (req, res) => {
       receiver_phone,
       description,
       grn_status,
-
       vehicle_number,
       invoice_number,
       updated_at: new Date()
     });
 
-    if (items && Array.isArray(items)) {
-      // Delete old GRN items
-      await GRNItem.destroy({
-        where: {
-          grn_id: id
-        }
-      });
+    await GRNItem.destroy({ where: { grn_id: id } });
 
-      // Create new GRN items
+    if (items && Array.isArray(items)) {
       const formattedItems = items.map(item => ({
-        ...item,
         grn_id: id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        device_ids: JSON.stringify(item.device_ids),
+        quantity: item.quantity,
+        unit_price: parseFloat(item.price),
+        total_price: parseFloat(item.price) * item.quantity,
       }));
       await GRNItem.bulkCreate(formattedItems);
     }
 
-    res.status(200).json({
-      message: 'GRN updated successfully',
-      grn
-    });
+    res.status(200).json({ message: 'GRN updated successfully', grn });
   } catch (error) {
     console.error('Update GRN error:', error);
-    res.status(500).json({
-      message: 'Error updating GRN',
-      error
-    });
+    res.status(500).json({ message: 'Error updating GRN', error });
   }
 };
 
-
-// Get All GRNs
+// Get all GRNs
 export const getAllGRNs = async (req, res) => {
   try {
     const grns = await GRN.findAll({
-      include: [{
-        model: GRNItem,
-        as: 'items',
-        include: [{
-          model: ProductTemplete,
-          as: 'product' // 👈 MATCH THE ALIAS in GRNItem.belongsTo
-        }]
-      }]
+      include: [
+        {
+          model: GRNItem,
+          as: 'items',
+          include: [{ model: ProductTemplete, as: 'product' }],
+        },
+        {
+          model: Order,
+          as: 'order',
+          attributes: ['rental_duration_in_months', 'rental_start_date', 'rental_end_date'],
+        }
+      ]
     });
 
     res.status(200).json(grns);
   } catch (error) {
     console.error('Fetch GRNs failed:', error);
-    res.status(500).json({
-      message: 'Error fetching GRNs',
-      error
-    });
+    res.status(500).json({ message: 'Error fetching GRNs', error });
   }
 };
-
-
 
 
 export const getAllApprovedGRNs = async (req, res) => {
@@ -374,69 +357,52 @@ export const getAllApprovedGRNs = async (req, res) => {
   }
 };
 
+
 // Get GRN by ID
 export const getGRNById = async (req, res) => {
   try {
-    const {
-      id
-    } = req.params;
+    const { id } = req.params;
 
     const grn = await GRN.findByPk(id, {
-      include: [{
-        model: GRNItem,
-        as: 'items',
-        include: [{
-          model: ProductTemplete,
-          as: 'product' // This must match the alias in GRNItem.belongsTo(ProductTemplete, { as: 'product', ... })
-        }]
-      }]
+      include: [
+        {
+          model: GRNItem,
+          as: 'items',
+          include: [{ model: ProductTemplete, as: 'product' }]
+        },
+        {
+          model: Order,
+          as: 'order',
+          attributes: ['rental_duration_in_months', 'rental_start_date', 'rental_end_date'],
+        }
+      ]
     });
 
     if (!grn) {
-      return res.status(404).json({
-        message: 'GRN not found'
-      });
+      return res.status(404).json({ message: 'GRN not found' });
     }
 
     res.status(200).json(grn);
   } catch (error) {
     console.error('Fetch GRN by ID failed:', error);
-    res.status(500).json({
-      message: 'Error fetching GRN',
-      error
-    });
+    res.status(500).json({ message: 'Error fetching GRN', error });
   }
 };
-
-
-
 
 // Delete GRN
 export const deleteGRN = async (req, res) => {
   try {
-    const {
-      id
-    } = req.params;
-    const grn = await GRN.findByPk(id);
-    if (!grn) return res.status(404).json({
-      message: 'GRN not found'
-    });
+    const { id } = req.params;
 
-    await GRNItem.destroy({
-      where: {
-        grn_id: id
-      }
-    });
+    const grn = await GRN.findByPk(id);
+    if (!grn) return res.status(404).json({ message: 'GRN not found' });
+
+    await GRNItem.destroy({ where: { grn_id: id } });
     await grn.destroy();
 
-    res.status(200).json({
-      message: 'GRN and related items deleted successfully'
-    });
+    res.status(200).json({ message: 'GRN and related items deleted successfully' });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      message: 'Error deleting GRN',
-      error
-    });
+    console.error('Error deleting GRN:', error);
+    res.status(500).json({ message: 'Error deleting GRN', error });
   }
 };

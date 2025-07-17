@@ -106,7 +106,15 @@ export default (sequelize, DataTypes) => {
     targetKey: 'id', // Contact.id → DispatchOrder.customer_code
     as: 'contact'
   });
+
+  // 👇 Add this association
+  DispatchOrder.hasMany(models.DeliveryChallan, {
+    foreignKey: 'dispatch_order_id',
+    as: 'delivery_challans',
+    onDelete: 'CASCADE'
+  });
 };
+
 
 
   return DispatchOrder;

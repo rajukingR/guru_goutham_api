@@ -14,6 +14,10 @@ const {
 
 } = db;
 
+
+const DispatchOrder = db.DispatchOrder;
+const DispatchOrderItem = db.DispatchOrderItem;
+
 export const createGoodsReceipt = async (req, res) => {
   try {
     const {
@@ -219,14 +223,16 @@ export const getApprovedProductSummary = async (req, res) => {
     for (const item of receiptItems) {
       const productId = item.product_id;
       const qty = item.quantity || 0;
-      const assets = Array.isArray(item.asset_ids) ? item.asset_ids : JSON.parse(item.asset_ids || '[]');
+      const assets = Array.isArray(item.asset_ids)
+        ? item.asset_ids
+        : JSON.parse(item.asset_ids || '[]');
 
       quantityMap[productId] = (quantityMap[productId] || 0) + qty;
       if (!assetMap[productId]) assetMap[productId] = [];
       assetMap[productId].push(...assets);
     }
 
-    // 3. Get used/returned device IDs from Invoices
+    // 3. Get used and returned device IDs from Invoices
     const invoiceItems = await InvoiceItem.findAll({
       attributes: ['product_id', 'device_ids', 'returned_device_ids']
     });
@@ -238,28 +244,32 @@ export const getApprovedProductSummary = async (req, res) => {
       const productId = item.product_id;
 
       try {
-        const usedIds = Array.isArray(item.device_ids) ? item.device_ids : JSON.parse(item.device_ids || '[]');
+        const usedIds = Array.isArray(item.device_ids)
+          ? item.device_ids
+          : JSON.parse(item.device_ids || '[]');
         if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
         usedIds.forEach(id => usedDeviceMap[productId].add(id));
       } catch (err) {
-        console.warn('Invalid device_ids JSON:', item.device_ids);
+        console.warn('Invalid device_ids JSON in InvoiceItem:', item.device_ids);
       }
 
       try {
-        const returnedIds = Array.isArray(item.returned_device_ids) ? item.returned_device_ids : JSON.parse(item.returned_device_ids || '[]');
+        const returnedIds = Array.isArray(item.returned_device_ids)
+          ? item.returned_device_ids
+          : JSON.parse(item.returned_device_ids || '[]');
         if (!returnedDeviceMap[productId]) returnedDeviceMap[productId] = new Set();
         returnedIds.forEach(id => returnedDeviceMap[productId].add(id));
       } catch (err) {
-        console.warn('Invalid returned_device_ids JSON:', item.returned_device_ids);
+        console.warn('Invalid returned_device_ids JSON in InvoiceItem:', item.returned_device_ids);
       }
     }
 
-    // 3.5 Include used device_ids from Delivered DCs (correct alias: 'challan')
+    // 3.5 Get used device IDs from Delivered DCs
     const deliveredChallanItems = await DeliveryChallanItem.findAll({
       include: [
         {
           model: DeliveryChallan,
-          as: 'challan', // ✅ alias as defined in model
+          as: 'challan',
           where: { dc_status: 'Delivered' },
           attributes: [],
         },
@@ -270,11 +280,39 @@ export const getApprovedProductSummary = async (req, res) => {
     for (const item of deliveredChallanItems) {
       const productId = item.product_id;
       try {
-        const deliveredIds = Array.isArray(item.device_ids) ? item.device_ids : JSON.parse(item.device_ids || '[]');
+        const deliveredIds = Array.isArray(item.device_ids)
+          ? item.device_ids
+          : JSON.parse(item.device_ids || '[]');
         if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
         deliveredIds.forEach(id => usedDeviceMap[productId].add(id));
       } catch (err) {
         console.warn('Invalid delivery_challan device_ids JSON:', item.device_ids);
+      }
+    }
+
+    // 3.6 Get used device IDs from Approved Dispatch Orders
+    const dispatchOrderItems = await DispatchOrderItem.findAll({
+      include: [
+        {
+          model: DispatchOrder,
+          as: 'dispatchOrder',
+          where: { dispatch_order_status: 'Approved' },
+          attributes: [],
+        }
+      ],
+      attributes: ['product_id', 'device_ids']
+    });
+
+    for (const item of dispatchOrderItems) {
+      const productId = item.product_id;
+      try {
+        const dispatchedIds = Array.isArray(item.device_ids)
+          ? item.device_ids
+          : JSON.parse(item.device_ids || '[]');
+        if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
+        dispatchedIds.forEach(id => usedDeviceMap[productId].add(id));
+      } catch (err) {
+        console.warn('Invalid dispatch_order device_ids JSON:', item.device_ids);
       }
     }
 

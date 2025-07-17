@@ -3,6 +3,7 @@ import {
   createDispatchOrder,
   getAllDispatchOrders,
   getAllApprovedDispatchOrders,
+  getAllApprovedDispatchOrdersApprovedDC,
   getDispatchOrderById,
   updateDispatchOrder,
   deleteDispatchOrder
@@ -13,6 +14,7 @@ const router = express.Router();
 router.post("/create", createDispatchOrder);
 router.get("/", getAllDispatchOrders);
 router.get("/approved", getAllApprovedDispatchOrders);
+router.get("/approved-dc", getAllApprovedDispatchOrdersApprovedDC);
 
 router.get("/:id", getDispatchOrderById);
 router.put("/:id", updateDispatchOrder);

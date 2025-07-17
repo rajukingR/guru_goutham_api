@@ -63,7 +63,7 @@ Order.associate = (models) => {
   });
 
   Order.hasMany(models.GRN, {  // ✅ use models.GRN instead of GRN
-    foreignKey: 'order_id',
+    foreignKey: 'dispatch_order_id',
     as: 'grns',
   });
 

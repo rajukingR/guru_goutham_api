@@ -8,6 +8,9 @@ export default (sequelize, DataTypes) => {
     dc_id: {
       type: DataTypes.STRING,
     },
+    dc_date: {
+      type: DataTypes.DATE,
+    },
     order_id: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -22,10 +25,16 @@ export default (sequelize, DataTypes) => {
     customer_id: {
       type: DataTypes.INTEGER,
     },
+    dispatch_order_id: {
+      type: DataTypes.INTEGER,
+    },
+    dispatch_order_number: {
+      type: DataTypes.STRING,
+    },
     customer_name: {
       type: DataTypes.STRING,
     },
-     transaction_type: {
+    transaction_type: {
       type: DataTypes.STRING,
     },
     invoice_date: {

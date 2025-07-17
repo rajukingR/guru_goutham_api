@@ -3,57 +3,87 @@ const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
 const InvoiceItem = db.InvoiceItem;
 
-// Create a new credit note
 export const createCreditNote = async (req, res) => {
   const t = await db.sequelize.transaction();
 
   try {
-    const { items, invoice_id, returned_date, ...noteData } = req.body;
-
-    // Create credit note
-    const creditNote = await CreditNote.create({
-      ...noteData,
-      invoice_id,
+    const {
+      items,
       returned_date,
-      print_credit_note: !!noteData.print_credit_note
+      credit_note_number,
+      credit_note_title,
+      industry,
+      transaction_type,
+      payment_type,
+      dc_id,
+      dc_number,
+      dc_date,
+      customer_id,
+      customer_name,
+      email,
+      shipping_name,
+      pincode,
+      pan,
+      tin,
+      amount,
+      reference,
+      created_by,
+      status,
+      print_credit_note
+    } = req.body;
+
+    const creditNote = await CreditNote.create({
+      credit_note_number,
+      credit_note_title,
+      industry,
+      transaction_type,
+      payment_type,
+      dispatch_order_number: dc_number,
+      dispatch_order_id: dc_id,
+      dc_date,
+      customer_id,
+      customer_name,
+      email,
+      shipping_name,
+      pincode,
+      pan,
+      tin,
+      amount,
+      reference,
+      returned_date,
+      created_by,
+      status,
+      print_credit_note: !!print_credit_note
     }, { transaction: t });
 
-    // Create items if present and update InvoiceItems
     if (items && items.length > 0) {
       const formattedItems = items.map(item => ({
         ...item,
         credit_note_id: creditNote.id
       }));
-      
+
       await CreditNoteItem.bulkCreate(formattedItems, { transaction: t });
 
-      // Update InvoiceItems with returned information
-      for (const item of items) {
-        await InvoiceItem.update(
-          {
-            returned_device_ids: item.device_ids,
-            returned_date: returned_date,
-            return_quantity: item.quantity
-          },
-          {
-            where: {
-              invoice_id: invoice_id,
-              product_id: item.product_id
-            },
-            transaction: t
-          }
-        );
-      }
+      // Removed InvoiceItem update logic
     }
 
     await t.commit();
 
-    res.status(201).json({ message: 'Credit note created successfully', creditNoteId: creditNote.id });
+    res.status(201).json({
+      message: 'Credit note created successfully',
+      creditNoteId: creditNote.id
+    });
   } catch (error) {
     await t.rollback();
-    res.status(500).json({ error: 'Failed to create credit note', details: error.message });
+    console.error('Error creating credit note:', error);
+    res.status(500).json({
+      error: 'Failed to create credit note',
+      details: error.message
+    });
   }
 };
+
+
 
 
 // Get all credit notes
@@ -100,14 +130,37 @@ export const updateCreditNote = async (req, res) => {
   const t = await db.sequelize.transaction();
 
   try {
-    const { items, returned_date, ...noteData } = req.body;
+    const {
+      items,
+      returned_date,
+      credit_note_number,
+      credit_note_title,
+      industry,
+      transaction_type,
+      payment_type,
+      dc_id,
+      dc_number,
+      dc_date,
+      customer_id,
+      customer_name,
+      email,
+      shipping_name,
+      pincode,
+      pan,
+      tin,
+      amount,
+      reference,
+      created_by,
+      status,
+      print_credit_note
+    } = req.body;
 
     const creditNote = await CreditNote.findByPk(id);
     if (!creditNote) {
       return res.status(404).json({ message: 'Credit note not found.' });
     }
 
-    // 🧹 Step 1: Fetch and reset all related InvoiceItems
+    // Step 1: Reset previously affected invoice items
     const existingItems = await CreditNoteItem.findAll({
       where: { credit_note_id: id },
       transaction: t
@@ -122,32 +175,50 @@ export const updateCreditNote = async (req, res) => {
         },
         {
           where: {
-            invoice_id: creditNote.invoice_id,
-            product_id: oldItem.product_id
+            product_id: oldItem.product_id,
+            // Optional: match on dc_id if applicable
           },
           transaction: t
         }
       );
     }
 
-    // 🧾 Step 2: Update the credit note itself
+    // Step 2: Update the credit note
     await creditNote.update({
-      ...noteData,
-      returned_date, // update returned_date if needed
+      credit_note_number,
+      credit_note_title,
+      industry,
+      transaction_type,
+      payment_type,
+      dispatch_order_number:dc_number,
+      dispatch_order_id:dc_id,
+      dc_date,
+      customer_id,
+      customer_name,
+      email,
+      shipping_name,
+      pincode,
+      pan,
+      tin,
+      amount,
+      reference,
+      returned_date,
+      created_by,
+      status,
       print_credit_note:
-        noteData.print_credit_note === true ||
-        noteData.print_credit_note === 'YES' ||
-        noteData.print_credit_note === 'true' ||
-        noteData.print_credit_note === 1,
+        print_credit_note === true ||
+        print_credit_note === 'YES' ||
+        print_credit_note === 'true' ||
+        print_credit_note === 1
     }, { transaction: t });
 
-    // 🔥 Step 3: Delete previous credit note items
+    // Step 3: Remove existing items
     await CreditNoteItem.destroy({
       where: { credit_note_id: id },
       transaction: t
     });
 
-    // 🆕 Step 4: Add new items and update InvoiceItems
+    // Step 4: Add new items and update invoice
     if (items && items.length > 0) {
       const formattedItems = items.map(item => ({
         ...item,
@@ -160,13 +231,13 @@ export const updateCreditNote = async (req, res) => {
         await InvoiceItem.update(
           {
             returned_device_ids: item.device_ids,
-            returned_date: returned_date,
+            returned_date,
             return_quantity: item.quantity
           },
           {
             where: {
-              invoice_id: creditNote.invoice_id,
-              product_id: item.product_id
+              product_id: item.product_id,
+              // Optional: match on dc_id if applicable
             },
             transaction: t
           }
@@ -176,13 +247,17 @@ export const updateCreditNote = async (req, res) => {
 
     await t.commit();
 
-    return res.status(200).json({ message: 'Credit note and items updated successfully.' });
+    res.status(200).json({ message: 'Credit note updated successfully' });
   } catch (error) {
     await t.rollback();
     console.error('Error updating credit note:', error);
-    return res.status(500).json({ message: 'Internal server error.', details: error.message });
+    res.status(500).json({
+      message: 'Failed to update credit note',
+      details: error.message
+    });
   }
 };
+
 
 
 
@@ -205,22 +280,7 @@ export const deleteCreditNote = async (req, res) => {
     });
 
     // Reset fields in InvoiceItem
-    for (const item of creditNoteItems) {
-      await InvoiceItem.update(
-        {
-          returned_device_ids: null,
-          returned_date: null,
-          return_quantity: 0
-        },
-        {
-          where: {
-            invoice_id: creditNote.invoice_id,
-            product_id: item.product_id
-          },
-          transaction: t
-        }
-      );
-    }
+   
 
     // Delete credit note items
     await CreditNoteItem.destroy({

@@ -1,6 +1,6 @@
 export default (sequelize, DataTypes) => {
   const GRNItem = sequelize.define('GRNItem', {
-    grn_item_id: {
+    id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
@@ -17,7 +17,38 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
     },
     device_ids: {
-      type: DataTypes.JSON,
+      type: DataTypes.TEXT,
+      get() {
+        const rawValue = this.getDataValue('device_ids');
+
+        if (!rawValue) return [];
+
+        // If already an array
+        if (Array.isArray(rawValue)) {
+          return rawValue.map((id) => String(id).trim());
+        }
+
+        // If it's a string
+        if (typeof rawValue === 'string') {
+          try {
+            const parsed = JSON.parse(rawValue);
+            if (Array.isArray(parsed)) {
+              return parsed.map((id) => String(id).trim());
+            }
+            return rawValue.split(',').map((id) => id.trim());
+          } catch {
+            return rawValue.split(',').map((id) => id.trim());
+          }
+        }
+
+        return [];
+      },
+      set(value) {
+        this.setDataValue(
+          'device_ids',
+          Array.isArray(value) ? JSON.stringify(value) : value
+        );
+      }
     },
     quantity: {
       type: DataTypes.INTEGER,
@@ -31,21 +62,20 @@ export default (sequelize, DataTypes) => {
   }, {
     tableName: 'grn_items',
     timestamps: false,
+    underscored: true,
   });
 
+  GRNItem.associate = (models) => {
+    GRNItem.belongsTo(models.GRN, {
+      foreignKey: 'grn_id',
+      as: 'grn',
+    });
 
-GRNItem.associate = (models) => {
-  GRNItem.belongsTo(models.GRN, {
-    foreignKey: 'grn_id',  // ✅ This matches the column in grn_items table
-    as: 'grn'  // Optional: you can name this association if needed
-  });
-  
-  GRNItem.belongsTo(models.ProductTemplete, {
-    foreignKey: 'product_id',
-    as: 'product'
-  });
-};
-
+    GRNItem.belongsTo(models.ProductTemplete, {
+      foreignKey: 'product_id',
+      as: 'product',
+    });
+  };
 
   return GRNItem;
 };

@@ -17,6 +17,9 @@ const {
   InvoiceItem,
 } = db;
 
+const DispatchOrder = db.DispatchOrder;
+const DispatchOrderItem = db.DispatchOrderItem;
+
 // ✅ Helper: Validate stock from approved goods receipts
 const validateStockForApprovedOrder = async (items = []) => {
   const approvedReceipts = await GoodsReceipt.findAll({
@@ -407,7 +410,6 @@ export const getAllOrders = async (req, res) => {
 };
 
 
-
 export const getAllOrdersApproved = async (req, res) => {
   try {
     const orders = await Order.findAll({
@@ -421,32 +423,31 @@ export const getAllOrdersApproved = async (req, res) => {
       order: [['id', 'DESC']]
     });
 
-    // Step 1: Get only latest order per customer
-    const latestOrdersMap = new Map();
-    for (const order of orders) {
-      const customerId = order.customer_id;
-      if (customerId && !latestOrdersMap.has(customerId)) {
-        latestOrdersMap.set(customerId, order);
+    const parseAssetIds = (input) => {
+      if (Array.isArray(input)) return input;
+      if (!input) return [];
+      try {
+        const parsed = typeof input === 'string' ? JSON.parse(input) : input;
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (err) {
+        console.warn('Failed to parse asset IDs:', input);
+        return [];
       }
-    }
-    const latestOrders = Array.from(latestOrdersMap.values());
+    };
 
     const formattedOrders = await Promise.all(
-      latestOrders.map(async (order) => {
+      orders.map(async (order) => {
         const orderJSON = order.toJSON();
         const { transaction_type, rental_duration } = orderJSON;
-
         let totalValue = 0;
 
         const itemsWithValue = await Promise.all(
           orderJSON.items.map(async (item) => {
-            const product = await ProductTemplete.findOne({ where: { id: item.product_id } });
-
+            const product = await ProductTemplete.findByPk(item.product_id);
             let itemTotal = 0;
             const qty = item.requested_quantity || 0;
             const duration = parseInt(rental_duration);
 
-            // Price calculation
             if (product) {
               if (transaction_type === 'Rent') {
                 if (duration >= 12 && product.rent_price_1_year) {
@@ -465,70 +466,62 @@ export const getAllOrdersApproved = async (req, res) => {
 
             totalValue += itemTotal;
 
-            // Step 1: Get all received asset_ids for the product
             const grnItems = await GoodsReceiptItem.findAll({
               where: { product_id: item.product_id },
-              attributes: ['asset_ids']
+              attributes: ['asset_ids'],
+              raw: true
             });
 
-            const allAssets = grnItems.flatMap(grn =>
-              Array.isArray(grn.asset_ids) ? grn.asset_ids : []
-            );
+            const allAssets = grnItems.flatMap(grn => parseAssetIds(grn.asset_ids));
             const allAssetSet = new Set(allAssets);
 
-            // Step 2: Get used device_ids from InvoiceItems for this order and product
-            const usedInvoiceItems = await InvoiceItem.findAll({
-              include: [{
-                model: Invoice,
-                as: 'invoice',
-                where: { order_id: order.id },
-                attributes: []
-              }],
-              where: { product_id: item.product_id },
-              attributes: ['device_ids']
+            const approvedDispatches = await DispatchOrder.findAll({
+              where: {
+                order_id: order.id,
+                dispatch_order_status: 'Approved'
+              },
+              attributes: ['id'],
+              raw: true
+            });
+
+            const approvedDispatchIds = approvedDispatches.map(d => d.id);
+
+            const dispatchItems = await DispatchOrderItem.findAll({
+              where: {
+                dispatch_order_id: approvedDispatchIds,
+                product_id: item.product_id
+              },
+              attributes: ['device_ids'],
+              raw: true
             });
 
             const usedSet = new Set();
-            for (const ii of usedInvoiceItems) {
-              try {
-                const deviceIds = Array.isArray(ii.device_ids)
-                  ? ii.device_ids
-                  : JSON.parse(ii.device_ids || '[]');
-                deviceIds.forEach(id => usedSet.add(id));
-              } catch (err) {
-                console.warn('Invalid device_ids JSON in InvoiceItem:', ii.device_ids);
-              }
-            }
+            dispatchItems.forEach(di => {
+              parseAssetIds(di.device_ids).forEach(id => usedSet.add(id));
+            });
 
-            // Step 3: Get returned device_ids from InvoiceItems for this order and product
-            const returnedInvoiceItems = await InvoiceItem.findAll({
+            const invoiceItems = await InvoiceItem.findAll({
               include: [{
                 model: Invoice,
                 as: 'invoice',
-                where: { order_id: order.id },
+                where: {
+                  order_id: approvedDispatchIds
+                },
                 attributes: []
               }],
               where: { product_id: item.product_id },
-              attributes: ['returned_device_ids']
+              attributes: ['returned_device_ids'],
+              raw: true
             });
 
             const returnedSet = new Set();
-            for (const ii of returnedInvoiceItems) {
-              try {
-                const returnedIds = Array.isArray(ii.returned_device_ids)
-                  ? ii.returned_device_ids
-                  : JSON.parse(ii.returned_device_ids || '[]');
-                returnedIds.forEach(id => returnedSet.add(id));
-              } catch (err) {
-                console.warn('Invalid returned_device_ids JSON in InvoiceItem:', ii.returned_device_ids);
-              }
-            }
+            invoiceItems.forEach(ii => {
+              parseAssetIds(ii.returned_device_ids).forEach(id => returnedSet.add(id));
+            });
 
-            // Step 4: Compute Available = (All - Used) + Returned
-            const availableAssetSet = new Set(
-              [...allAssetSet].filter(id => !usedSet.has(id) || returnedSet.has(id))
+            const availableAssetIds = Array.from(allAssetSet).filter(id =>
+              !usedSet.has(id) || returnedSet.has(id)
             );
-            const availableAssetIds = Array.from(availableAssetSet);
 
             return {
               ...item,
@@ -558,11 +551,14 @@ export const getAllOrdersApproved = async (req, res) => {
   } catch (error) {
     console.error('Error in getAllOrdersApproved:', error);
     res.status(500).json({
-      message: 'Error fetching approved orders with remaining asset info',
-      error
+      message: 'Error fetching approved orders with available asset info',
+      error: error.message
     });
   }
 };
+
+
+
 
 
 

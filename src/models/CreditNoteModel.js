@@ -20,28 +20,20 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    dc_id: {
-      type: DataTypes.STRING,
+    dispatch_order_id: {
+      type: DataTypes.INTEGER, // updated from dc_id
+      allowNull: true,
+    },
+    dispatch_order_number: {
+      type: DataTypes.STRING(100), // updated from dc_number
+      allowNull: true,
+    },
+    dc_date: {
+      type: DataTypes.DATEONLY,
       allowNull: true,
     },
     customer_id: {
       type: DataTypes.STRING,
-      allowNull: true,
-    },
-    invoice_id: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-    invoice_date: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
-    },
-    invoice_start_date: {
-      type: DataTypes.DATEONLY,
-      allowNull: true,
-    },
-    invoice_end_date: {
-      type: DataTypes.DATEONLY,
       allowNull: true,
     },
     returned_date: {
@@ -98,12 +90,17 @@ export default (sequelize, DataTypes) => {
     underscored: true,
   });
 
-  // Associations should be attached here using a separate function
   CreditNote.associate = (models) => {
     CreditNote.hasMany(models.CreditNoteItem, {
       foreignKey: 'credit_note_id',
       as: 'items',
     });
+
+    // Optional: Add association with DispatchOrder if needed
+    // CreditNote.belongsTo(models.DispatchOrder, {
+    //   foreignKey: 'dispatch_order_id',
+    //   as: 'dispatch_order'
+    // });
   };
 
   return CreditNote;

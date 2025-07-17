@@ -1,8 +1,11 @@
 import db from "../models/index.js";
+import { Op } from "sequelize";
 
 const DispatchOrder = db.DispatchOrder;
 const DispatchOrderItem = db.DispatchOrderItem;
 const Contact = db.Contact;
+const DeliveryChallan = db.DeliveryChallan;
+const GRN = db.GRN;
 
 // ✅ Create Dispatch Order with Items
 export const createDispatchOrder = async (req, res) => {
@@ -44,8 +47,21 @@ export const getAllDispatchOrders = async (req, res) => {
 
 export const getAllApprovedDispatchOrders = async (req, res) => {
   try {
+    // Step 1: Get dispatch_order_ids from GRNs where grn_status = "Approved"
+    const grnApprovedDispatchOrderIds = await GRN.findAll({
+      attributes: ['dispatch_order_id'],
+      where: { grn_status: "Approved" },
+      raw: true,
+    });
+
+    const excludeIds = grnApprovedDispatchOrderIds.map(grn => grn.dispatch_order_id);
+
+    // Step 2: Fetch Dispatch Orders excluding those with Approved GRNs
     const approvedOrders = await DispatchOrder.findAll({
-      where: { dispatch_order_status: "Approved" },
+      where: {
+        dispatch_order_status: "Approved",
+        id: { [Op.notIn]: excludeIds }, // Exclude these dispatch_order_ids
+      },
       include: [
         {
           model: db.DispatchOrderItem,
@@ -69,6 +85,53 @@ export const getAllApprovedDispatchOrders = async (req, res) => {
   }
 };
 
+
+
+export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
+  try {
+    // Step 1: Find all dispatch_order_ids with Approved GRNs
+    const grnApprovedDispatchOrderIds = await GRN.findAll({
+      attributes: ['dispatch_order_id'],
+      where: { grn_status: "Approved" },
+      raw: true,
+    });
+
+    const excludeIds = grnApprovedDispatchOrderIds.map(grn => grn.dispatch_order_id);
+
+    // Step 2: Fetch only Approved DispatchOrders with Delivered Challans, excluding above IDs
+    const approvedOrders = await DispatchOrder.findAll({
+      where: {
+        dispatch_order_status: "Approved",
+        id: { [Op.notIn]: excludeIds }, // <-- EXCLUDE these dispatch order IDs
+      },
+      include: [
+        {
+          model: DispatchOrderItem,
+          as: "items",
+        },
+        {
+          model: Contact,
+          as: "contact",
+        },
+        {
+          model: DeliveryChallan,
+          as: "delivery_challans",
+          where: { dc_status: "Delivered" },
+          required: true,
+        },
+      ],
+      order: [["id", "DESC"]],
+    });
+
+    res.json(approvedOrders);
+  } catch (err) {
+    console.error("Error fetching filtered dispatch orders:", err);
+    res.status(500).json({
+      message: "Failed to fetch filtered dispatch orders",
+      error: err.message,
+    });
+  }
+};
 
 
 // ✅ Get Dispatch Order by ID

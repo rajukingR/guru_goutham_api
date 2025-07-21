@@ -40,6 +40,8 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
+                rental_end_date: DataTypes.DATE,
+
     customer_name: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -95,6 +97,12 @@ export default (sequelize, DataTypes) => {
       foreignKey: 'credit_note_id',
       as: 'items',
     });
+    CreditNote.belongsTo(models.Contact, {
+  foreignKey: 'customer_id',
+  targetKey: 'id',
+  as: 'customer',
+});
+
 
     // Optional: Add association with DispatchOrder if needed
     // CreditNote.belongsTo(models.DispatchOrder, {

@@ -11,12 +11,13 @@ const {
   Invoice,
   InvoiceItem,
   AssetId,
+  DispatchOrder,
+  DispatchOrderItem,
+  CreditNoteItem,
 
 } = db;
 
 
-const DispatchOrder = db.DispatchOrder;
-const DispatchOrderItem = db.DispatchOrderItem;
 
 export const createGoodsReceipt = async (req, res) => {
   try {
@@ -193,28 +194,21 @@ export const getGoodsReceiptById = async (req, res) => {
 
 export const getApprovedProductSummary = async (req, res) => {
   try {
-    // 1. Get Approved Goods Receipts
+    // 1. Get Approved GRNs
     const approvedReceipts = await GoodsReceipt.findAll({
-      where: {
-        goods_receipt_status: 'Approved'
-      },
-      attributes: ['id'],
+      where: { goods_receipt_status: 'Approved' },
+      attributes: ['id']
     });
-
     const approvedReceiptIds = approvedReceipts.map(r => r.id);
+
     if (approvedReceiptIds.length === 0) {
-      return res.status(200).json({
-        summary: {},
-        products: []
-      });
+      return res.status(200).json({ summary: {}, products: [] });
     }
 
-    // 2. Get GoodsReceiptItems for approved receipts
+    // 2. Fetch GoodsReceiptItems
     const receiptItems = await GoodsReceiptItem.findAll({
-      where: {
-        goods_receipt_id: approvedReceiptIds
-      },
-      attributes: ['product_id', 'quantity', 'asset_ids'],
+      where: { goods_receipt_id: approvedReceiptIds },
+      attributes: ['product_id', 'quantity', 'asset_ids']
     });
 
     const quantityMap = {};
@@ -232,98 +226,71 @@ export const getApprovedProductSummary = async (req, res) => {
       assetMap[productId].push(...assets);
     }
 
-    // 3. Get used and returned device IDs from Invoices
-    const invoiceItems = await InvoiceItem.findAll({
-      attributes: ['product_id', 'device_ids', 'returned_device_ids']
-    });
+    // Helper to parse asset ID arrays
+    const parseIds = (ids) => {
+      if (!ids) return [];
+      if (Array.isArray(ids)) return ids;
+      try {
+        return JSON.parse(ids);
+      } catch {
+        return [];
+      }
+    };
 
+    // 3. Used devices (from Invoices, DCs, Dispatch Orders)
     const usedDeviceMap = {};
-    const returnedDeviceMap = {};
 
+    // Invoices
+    const invoiceItems = await InvoiceItem.findAll({ attributes: ['product_id', 'device_ids'] });
     for (const item of invoiceItems) {
-      const productId = item.product_id;
-
-      try {
-        const usedIds = Array.isArray(item.device_ids)
-          ? item.device_ids
-          : JSON.parse(item.device_ids || '[]');
-        if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
-        usedIds.forEach(id => usedDeviceMap[productId].add(id));
-      } catch (err) {
-        console.warn('Invalid device_ids JSON in InvoiceItem:', item.device_ids);
-      }
-
-      try {
-        const returnedIds = Array.isArray(item.returned_device_ids)
-          ? item.returned_device_ids
-          : JSON.parse(item.returned_device_ids || '[]');
-        if (!returnedDeviceMap[productId]) returnedDeviceMap[productId] = new Set();
-        returnedIds.forEach(id => returnedDeviceMap[productId].add(id));
-      } catch (err) {
-        console.warn('Invalid returned_device_ids JSON in InvoiceItem:', item.returned_device_ids);
-      }
+      const pid = item.product_id;
+      const ids = parseIds(item.device_ids);
+      if (!usedDeviceMap[pid]) usedDeviceMap[pid] = new Set();
+      ids.forEach(id => usedDeviceMap[pid].add(id));
     }
 
-    // 3.5 Get used device IDs from Delivered DCs
+    // Delivery Challans (Delivered)
     const deliveredChallanItems = await DeliveryChallanItem.findAll({
-      include: [
-        {
-          model: DeliveryChallan,
-          as: 'challan',
-          where: { dc_status: 'Delivered' },
-          attributes: [],
-        },
-      ],
+      include: [{ model: DeliveryChallan, as: 'challan', where: { dc_status: 'Delivered' }, attributes: [] }],
       attributes: ['product_id', 'device_ids']
     });
-
     for (const item of deliveredChallanItems) {
-      const productId = item.product_id;
-      try {
-        const deliveredIds = Array.isArray(item.device_ids)
-          ? item.device_ids
-          : JSON.parse(item.device_ids || '[]');
-        if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
-        deliveredIds.forEach(id => usedDeviceMap[productId].add(id));
-      } catch (err) {
-        console.warn('Invalid delivery_challan device_ids JSON:', item.device_ids);
-      }
+      const pid = item.product_id;
+      const ids = parseIds(item.device_ids);
+      if (!usedDeviceMap[pid]) usedDeviceMap[pid] = new Set();
+      ids.forEach(id => usedDeviceMap[pid].add(id));
     }
 
-    // 3.6 Get used device IDs from Approved Dispatch Orders
+    // Dispatch Orders (Approved)
     const dispatchOrderItems = await DispatchOrderItem.findAll({
-      include: [
-        {
-          model: DispatchOrder,
-          as: 'dispatchOrder',
-          where: { dispatch_order_status: 'Approved' },
-          attributes: [],
-        }
-      ],
+      include: [{ model: DispatchOrder, as: 'dispatchOrder', where: { dispatch_order_status: 'Approved' }, attributes: [] }],
       attributes: ['product_id', 'device_ids']
     });
-
     for (const item of dispatchOrderItems) {
-      const productId = item.product_id;
-      try {
-        const dispatchedIds = Array.isArray(item.device_ids)
-          ? item.device_ids
-          : JSON.parse(item.device_ids || '[]');
-        if (!usedDeviceMap[productId]) usedDeviceMap[productId] = new Set();
-        dispatchedIds.forEach(id => usedDeviceMap[productId].add(id));
-      } catch (err) {
-        console.warn('Invalid dispatch_order device_ids JSON:', item.device_ids);
-      }
+      const pid = item.product_id;
+      const ids = parseIds(item.device_ids);
+      if (!usedDeviceMap[pid]) usedDeviceMap[pid] = new Set();
+      ids.forEach(id => usedDeviceMap[pid].add(id));
     }
 
-    // 4. Get product details
-    const productIds = Object.keys(quantityMap).map(Number);
-    const productTemplates = await ProductTemplete.findAll({
-      where: { id: productIds }
+    // 4. Returned assets (from Credit Notes)
+    const creditReturnedMap = {};
+    const creditNoteItems = await CreditNoteItem.findAll({
+      attributes: ['product_id', 'device_ids']
     });
+    for (const item of creditNoteItems) {
+      const pid = item.product_id;
+      const ids = parseIds(item.device_ids);
+      if (!creditReturnedMap[pid]) creditReturnedMap[pid] = new Set();
+      ids.forEach(id => creditReturnedMap[pid].add(id));
+    }
+
+    // 5. Fetch product templates
+    const productIds = Object.keys(quantityMap).map(Number);
+    const productTemplates = await ProductTemplete.findAll({ where: { id: productIds } });
     const productMap = Object.fromEntries(productTemplates.map(p => [p.id, p.toJSON()]));
 
-    // 5. Final aggregation
+    // 6. Aggregate result
     let totalUsedCount = 0;
     let grandTotalAmount = 0;
 
@@ -332,12 +299,16 @@ export const getApprovedProductSummary = async (req, res) => {
       const allAssets = assetMap[productId] || [];
 
       const usedSet = usedDeviceMap[productId] || new Set();
-      const returnedSet = returnedDeviceMap[productId] || new Set();
+      const returnedSet = creditReturnedMap[productId] || new Set();
 
-      const availableAssets = allAssets.filter(id => !usedSet.has(id) || returnedSet.has(id));
-      const netUsedSet = new Set([...usedSet].filter(id => !returnedSet.has(id)));
-      const usedQty = netUsedSet.size;
+      // Final used = all used - returned
+      const finalUsedSet = new Set([...usedSet].filter(id => !returnedSet.has(id)));
 
+      const availableAssetIds = allAssets.filter(id =>
+        !finalUsedSet.has(id) || returnedSet.has(id)
+      );
+
+      const usedQty = finalUsedSet.size;
       const product = productMap[productId];
       const purchasePrice = parseFloat(product?.purchase_price || 0);
       const totalValue = totalQty * purchasePrice;
@@ -349,29 +320,31 @@ export const getApprovedProductSummary = async (req, res) => {
         product_id: productId,
         total_quantity: totalQty,
         used_quantity: usedQty,
-        available_quantity: availableAssets.length,
+        available_quantity: availableAssetIds.length,
         purchase_price: purchasePrice,
         total_value: totalValue,
-        asset_ids: availableAssets,
-        product,
+        available_asset_ids: availableAssetIds,
+        product
       };
     });
 
     res.status(200).json({
       summary: {
         total_used_quantity: totalUsedCount,
-        grand_total_stock_value: grandTotalAmount,
+        grand_total_stock_value: grandTotalAmount
       },
-      products: result,
+      products: result
     });
+
   } catch (error) {
     console.error("Error in getApprovedProductSummary:", error);
     res.status(500).json({
       message: "Internal server error",
-      error
+      error: error.message
     });
   }
 };
+
 
 
 

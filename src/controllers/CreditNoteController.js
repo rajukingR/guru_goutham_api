@@ -2,6 +2,7 @@ import db from '../models/index.js';
 const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
 const InvoiceItem = db.InvoiceItem;
+const Contact = db.Contact;
 
 export const createCreditNote = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -10,6 +11,7 @@ export const createCreditNote = async (req, res) => {
     const {
       items,
       returned_date,
+      rental_end_date,
       credit_note_number,
       credit_note_title,
       industry,
@@ -51,6 +53,7 @@ export const createCreditNote = async (req, res) => {
       amount,
       reference,
       returned_date,
+      rental_end_date,
       created_by,
       status,
       print_credit_note: !!print_credit_note
@@ -86,11 +89,12 @@ export const createCreditNote = async (req, res) => {
 
 
 
-// Get all credit notes
+// Get all credit notes in descending order
 export const getAllCreditNotes = async (req, res) => {
   try {
     const notes = await CreditNote.findAll({
-      include: [{ model: CreditNoteItem, as: 'items' }]
+      include: [{ model: CreditNoteItem, as: 'items' }],
+      order: [['createdAt', 'DESC']] // or use 'id' if preferred
     });
     res.status(200).json(notes);
   } catch (error) {
@@ -102,11 +106,15 @@ export const getAllCreditNotes = async (req, res) => {
 };
 
 
+
 // Get a single credit note by ID
 export const getCreditNoteById = async (req, res) => {
   try {
     const note = await CreditNote.findByPk(req.params.id, {
-      include: [{ model: CreditNoteItem, as: 'items' }]
+      include: [
+        { model: CreditNoteItem, as: 'items' },
+        { model: Contact, as: 'customer' } // <-- This line includes the customer data
+      ]
     });
 
     if (!note) {
@@ -123,6 +131,7 @@ export const getCreditNoteById = async (req, res) => {
 };
 
 
+
 // Update a credit note
 // ✅ Corrected version: use ES module export
 export const updateCreditNote = async (req, res) => {
@@ -133,6 +142,8 @@ export const updateCreditNote = async (req, res) => {
     const {
       items,
       returned_date,
+            rental_end_date,
+
       credit_note_number,
       credit_note_title,
       industry,
@@ -203,6 +214,8 @@ export const updateCreditNote = async (req, res) => {
       amount,
       reference,
       returned_date,
+            rental_end_date,
+
       created_by,
       status,
       print_credit_note:

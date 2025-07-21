@@ -12,13 +12,15 @@ const {
   DeliveryChallan,
   DeliveryChallanItem,
   Contact,
-
+DispatchOrder,
    Invoice,
+   DispatchOrderItem,
   InvoiceItem,
+  CreditNoteItem,
 } = db;
 
-const DispatchOrder = db.DispatchOrder;
-const DispatchOrderItem = db.DispatchOrderItem;
+
+
 
 // ✅ Helper: Validate stock from approved goods receipts
 const validateStockForApprovedOrder = async (items = []) => {
@@ -319,7 +321,8 @@ export const updateOrder = async (req, res) => {
 export const getAllOrders = async (req, res) => {
   try {
     const orders = await Order.findAll({
-      include: [{
+      include: [
+        {
           model: OrderItem,
           as: 'items'
         },
@@ -331,37 +334,31 @@ export const getAllOrders = async (req, res) => {
           model: OrderPersonalDetail,
           as: 'personalDetails'
         }
-      ]
+      ],
+      order: [['created_at', 'DESC']] // <-- Add this line to sort orders in descending order
     });
 
     const formattedOrders = await Promise.all(
       orders.map(async (order) => {
         const orderJSON = order.toJSON();
-        const {
-          transaction_type,
-          rental_duration
-        } = orderJSON;
+        const { transaction_type, rental_duration } = orderJSON;
 
         let totalValue = 0;
 
-        // Calculate each item value
         const itemsWithValue = await Promise.all(
           orderJSON.items.map(async (item) => {
             const product = await ProductTemplete.findOne({
-              where: {
-                id: item.product_id
-              }
+              where: { id: item.product_id }
             });
 
             let itemTotal = 0;
             const qty = item.requested_quantity || 0;
-            const duration = parseInt(rental_duration); // Make sure it's a number
+            const duration = parseInt(rental_duration);
 
             if (product) {
               if (transaction_type === 'Rent') {
                 if (duration >= 12 && product.rent_price_1_year) {
-                  // Annual rent per item is for 12 months
-                  itemTotal = qty * (product.rent_price_1_year);
+                  itemTotal = qty * product.rent_price_1_year;
                 } else if (duration >= 6 && product.rent_price_6_months) {
                   itemTotal = qty * (duration / 6) * product.rent_price_6_months;
                 } else if (duration >= 1 && product.rent_price_per_month) {
@@ -423,14 +420,14 @@ export const getAllOrdersApproved = async (req, res) => {
       order: [['id', 'DESC']]
     });
 
+    // Utility function to safely parse JSON asset ID fields
     const parseAssetIds = (input) => {
       if (Array.isArray(input)) return input;
       if (!input) return [];
       try {
         const parsed = typeof input === 'string' ? JSON.parse(input) : input;
         return Array.isArray(parsed) ? parsed : [];
-      } catch (err) {
-        console.warn('Failed to parse asset IDs:', input);
+      } catch {
         return [];
       }
     };
@@ -438,107 +435,67 @@ export const getAllOrdersApproved = async (req, res) => {
     const formattedOrders = await Promise.all(
       orders.map(async (order) => {
         const orderJSON = order.toJSON();
-        const { transaction_type, rental_duration } = orderJSON;
         let totalValue = 0;
 
         const itemsWithValue = await Promise.all(
           orderJSON.items.map(async (item) => {
+            // 1. Get product details
             const product = await ProductTemplete.findByPk(item.product_id);
             let itemTotal = 0;
-            const qty = item.requested_quantity || 0;
-            const duration = parseInt(rental_duration);
 
             if (product) {
-              if (transaction_type === 'Rent') {
-                if (duration >= 12 && product.rent_price_1_year) {
-                  itemTotal = qty * product.rent_price_1_year;
-                } else if (duration >= 6 && product.rent_price_6_months) {
-                  itemTotal = qty * (duration / 6) * product.rent_price_6_months;
-                } else if (duration >= 1 && product.rent_price_per_month) {
-                  itemTotal = qty * duration * product.rent_price_per_month;
-                } else if (duration < 1 && product.rent_price_per_day) {
-                  itemTotal = qty * (duration * 30) * product.rent_price_per_day;
-                }
-              } else if (transaction_type === 'Buy') {
-                itemTotal = qty * product.purchase_price;
+              if (orderJSON.transaction_type === 'Rent') {
+                // Add your rent calculation logic here if needed
+              } else if (orderJSON.transaction_type === 'Buy') {
+                itemTotal = (item.requested_quantity || 0) * product.purchase_price;
               }
             }
-
             totalValue += itemTotal;
 
+            // 2. Get all GRN assets for the product
             const grnItems = await GoodsReceiptItem.findAll({
               where: { product_id: item.product_id },
               attributes: ['asset_ids'],
               raw: true
             });
+            const allGrnAssets = grnItems.flatMap(grn => parseAssetIds(grn.asset_ids));
 
-            const allAssets = grnItems.flatMap(grn => parseAssetIds(grn.asset_ids));
-            const allAssetSet = new Set(allAssets);
-
-            const approvedDispatches = await DispatchOrder.findAll({
-              where: {
-                order_id: order.id,
-                dispatch_order_status: 'Approved'
-              },
-              attributes: ['id'],
-              raw: true
-            });
-
-            const approvedDispatchIds = approvedDispatches.map(d => d.id);
-
-            const dispatchItems = await DispatchOrderItem.findAll({
-              where: {
-                dispatch_order_id: approvedDispatchIds,
-                product_id: item.product_id
-              },
+            // 3. Get all dispatched assets for this product (across all orders)
+            const allDispatchItems = await DispatchOrderItem.findAll({
+              where: { product_id: item.product_id },
               attributes: ['device_ids'],
               raw: true
             });
+            const allDispatchedAssets = allDispatchItems.flatMap(d => parseAssetIds(d.device_ids));
+            const dispatchedSet = new Set(allDispatchedAssets);
 
-            const usedSet = new Set();
-            dispatchItems.forEach(di => {
-              parseAssetIds(di.device_ids).forEach(id => usedSet.add(id));
-            });
-
-            const invoiceItems = await InvoiceItem.findAll({
-              include: [{
-                model: Invoice,
-                as: 'invoice',
-                where: {
-                  order_id: approvedDispatchIds
-                },
-                attributes: []
-              }],
+            // 4. Get all returned assets from Credit Notes
+            const creditNoteItems = await CreditNoteItem.findAll({
               where: { product_id: item.product_id },
-              attributes: ['returned_device_ids'],
+              attributes: ['device_ids'],
               raw: true
             });
+            const returnedAssets = creditNoteItems.flatMap(cn => parseAssetIds(cn.device_ids));
+            const returnedSet = new Set(returnedAssets);
 
-            const returnedSet = new Set();
-            invoiceItems.forEach(ii => {
-              parseAssetIds(ii.returned_device_ids).forEach(id => returnedSet.add(id));
-            });
-
-            const availableAssetIds = Array.from(allAssetSet).filter(id =>
-              !usedSet.has(id) || returnedSet.has(id)
+            // 5. Calculate available asset IDs: (GRN - Dispatched) + Returned
+            const availableAssetIds = allGrnAssets.filter(id =>
+              !dispatchedSet.has(id) || returnedSet.has(id)
             );
 
             return {
               ...item,
               item_total_value: itemTotal,
-              available_asset_ids: availableAssetIds
+              available_asset_ids: availableAssetIds,
+              total_grn_assets: allGrnAssets.length,
+              dispatched_count: dispatchedSet.size,
+              returned_count: returnedSet.size
             };
           })
         );
 
-        const totalQuantity = orderJSON.items.reduce(
-          (sum, item) => sum + (item.requested_quantity || 0),
-          0
-        );
-
         return {
           ...orderJSON,
-          total_quantity: totalQuantity,
           total_order_value: totalValue,
           personal_details: orderJSON.personalDetails,
           address: order.address,
@@ -551,11 +508,12 @@ export const getAllOrdersApproved = async (req, res) => {
   } catch (error) {
     console.error('Error in getAllOrdersApproved:', error);
     res.status(500).json({
-      message: 'Error fetching approved orders with available asset info',
+      message: 'Error fetching approved orders',
       error: error.message
     });
   }
 };
+
 
 
 

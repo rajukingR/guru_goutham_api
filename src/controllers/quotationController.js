@@ -81,11 +81,15 @@ export const createQuotation = async (req, res) => {
 export const getAllQuotations = async (req, res) => {
   try {
     const quotations = await Quotation.findAll({
-      include: [{
-        model: QuotationItem,
-        as: 'items', // use the same alias as defined in the model
-      }]
+      include: [
+        {
+          model: QuotationItem,
+          as: 'items', // use the same alias as defined in the model
+        }
+      ],
+      order: [['created_at', 'DESC']] // <-- Sort by created_at descending
     });
+
     res.status(200).json(quotations);
   } catch (error) {
     console.error(error);
@@ -95,6 +99,7 @@ export const getAllQuotations = async (req, res) => {
     });
   }
 };
+
 
 
 export const getAllQuotationsApproved = async (req, res) => {

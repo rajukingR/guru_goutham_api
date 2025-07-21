@@ -19,6 +19,8 @@ export default (sequelize, DataTypes) => {
     dispatch_order_date: {
       type: DataTypes.DATEONLY
     },
+            rental_end_date: DataTypes.DATE,
+
     order_id: {
       type: DataTypes.INTEGER
     },

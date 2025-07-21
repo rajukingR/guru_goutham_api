@@ -859,7 +859,7 @@ export const getInvoiceById = async (req, res) => {
     const order_date = order?.order_date || null;
     const order_table_id = order?.order_id || null;
 
-    // 3. Parse device fields safely
+    // 3. Safe JSON parsing
     const parseJSONSafe = (input) => {
       try {
         if (typeof input === 'string') return JSON.parse(input);
@@ -898,11 +898,31 @@ export const getInvoiceById = async (req, res) => {
       ],
     });
 
-    // 6. Convert credit notes to JSON format
-    const formattedCreditNotes = creditNotes.map((note) => ({
-      ...note.toJSON(),
-      items: note.items || [],
-    }));
+    // 6. Filter: only credit notes with returned_date exactly 1 month before invoice_start_date
+    const invoiceStart = new Date(invoice.invoice_start_date);
+    const invoiceStartMonth = invoiceStart.getMonth();
+    const invoiceStartYear = invoiceStart.getFullYear();
+
+    const formattedCreditNotes = creditNotes
+      .map((note) => note.toJSON())
+      .filter((note) => {
+        if (!note.returned_date) return false;
+
+        const returnedDate = new Date(note.returned_date);
+        const returnedMonth = returnedDate.getMonth();
+        const returnedYear = returnedDate.getFullYear();
+
+        // Handle year-end crossover (e.g., Jan - Dec)
+        const isOneMonthBefore =
+          (invoiceStartMonth === 0 && returnedMonth === 11 && invoiceStartYear - returnedYear === 1) ||
+          (returnedYear === invoiceStartYear && invoiceStartMonth - returnedMonth === 1);
+
+        return isOneMonthBefore;
+      })
+      .map((note) => ({
+        ...note,
+        items: note.items || [],
+      }));
 
     // 7. Build final response
     const invoiceJSON = invoice.toJSON();
@@ -922,6 +942,240 @@ export const getInvoiceById = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+export const getCustomerInvoices = async (req, res) => {
+  try {
+    const { customer_id } = req.params;
+
+    // 1. Fetch all invoices for the customer with items and shipping details
+    const invoices = await Invoice.findAll({
+      where: { customer_id },
+      include: [
+        {
+          model: InvoiceItem,
+          as: 'items',
+          include: [
+            {
+              model: ProductTemplete,
+              as: 'productDetails',
+            },
+          ],
+        },
+        {
+          model: InvoiceShippingDetail,
+          as: 'shippingDetail',
+        },
+      ],
+      order: [['invoice_date', 'ASC']], // Oldest first
+    });
+
+    if (!invoices || invoices.length === 0) {
+      return res.status(404).json({
+        message: 'No invoices found for this customer',
+      });
+    }
+
+    // Helper function to parse device fields safely
+    const parseJSONSafe = (input) => {
+      try {
+        if (typeof input === 'string') return JSON.parse(input);
+        return Array.isArray(input) ? input : [];
+      } catch {
+        return [];
+      }
+    };
+
+    // Process each invoice
+    const processedInvoices = await Promise.all(invoices.map(async (invoice) => {
+      // Fetch related order details
+      const order = await Order.findByPk(invoice.order_id);
+      
+      // Fetch related credit notes
+      const creditNotes = await CreditNote.findAll({
+        where: { dispatch_order_id: invoice.dispatch_order_id },
+        include: [{ model: CreditNoteItem, as: 'items' }],
+      });
+
+      // Format invoice items
+      const updatedItems = invoice.items.map((item) => {
+        const device_ids = parseJSONSafe(item.device_ids);
+        const returned_device_ids = parseJSONSafe(item.returned_device_ids);
+        const remaining_device_ids = device_ids.filter(
+          (id) => !returned_device_ids.includes(id)
+        );
+
+        return {
+          ...item.toJSON(),
+          device_ids,
+          returned_device_ids,
+          remaining_device_ids,
+        };
+      });
+
+      // Build invoice object
+      return {
+        ...invoice.toJSON(),
+        items: updatedItems,
+        order_table_id: order?.order_id || null,
+        order_date: order?.order_date || null,
+        credit_notes: creditNotes.map(note => ({
+          ...note.toJSON(),
+          items: note.items || [],
+        })),
+      };
+    }));
+
+    // Group invoices by month for better organization
+    const invoicesByMonth = processedInvoices.reduce((acc, invoice) => {
+      const monthYear = invoice.invoice_date.substring(0, 7); // "2025-07" format
+      if (!acc[monthYear]) {
+        acc[monthYear] = [];
+      }
+      acc[monthYear].push(invoice);
+      return acc;
+    }, {});
+
+    return res.status(200).json({
+      success: true,
+      customer_id,
+      invoice_count: processedInvoices.length,
+      invoices_by_month: invoicesByMonth,
+      all_invoices: processedInvoices, // Flat list of all invoices
+    });
+
+  } catch (error) {
+    console.error('Error fetching customer invoices:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
+
+export const getCustomerInvoicesByDate = async (req, res) => {
+  try {
+    const { customer_id, invoice_date } = req.params;
+
+    if (!customer_id || !invoice_date) {
+      return res.status(400).json({ success: false, message: 'Missing customer_id or invoice_date' });
+    }
+
+    const inputDate = new Date(invoice_date);
+    if (isNaN(inputDate)) {
+      return res.status(400).json({ success: false, message: 'Invalid invoice_date format' });
+    }
+
+    // Calculate last day of selected month
+    const endOfMonth = new Date(inputDate.getFullYear(), inputDate.getMonth() + 1, 0, 23, 59, 59);
+
+    // Fetch all invoices up to and including that date
+    const invoices = await Invoice.findAll({
+      where: {
+        customer_id,
+        invoice_date: {
+          [Op.lte]: endOfMonth,
+        },
+      },
+      include: [
+        { model: InvoiceItem, as: 'items' },
+        { model: InvoiceShippingDetail, as: 'shippingDetail' },
+      ],
+      order: [['invoice_date', 'ASC']],
+    });
+
+    // Remove duplicate invoices based on invoice_number
+    const uniqueInvoicesMap = new Map();
+    invoices.forEach(inv => {
+      uniqueInvoicesMap.set(inv.invoice_number, inv);
+    });
+    const uniqueInvoices = Array.from(uniqueInvoicesMap.values());
+
+    if (!uniqueInvoices.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'No invoices found for this customer',
+      });
+    }
+
+    // Safe JSON parse utility
+    const parseJSONSafe = (input) => {
+      try {
+        if (typeof input === 'string') return JSON.parse(input);
+        return Array.isArray(input) ? input : [];
+      } catch {
+        return [];
+      }
+    };
+
+    // Process each invoice
+    const processedInvoices = await Promise.all(
+      uniqueInvoices.map(async (invoice) => {
+        const order = await Order.findByPk(invoice.order_id);
+
+        const creditNotes = await CreditNote.findAll({
+          where: { dispatch_order_id: invoice.dispatch_order_id },
+          include: [{ model: CreditNoteItem, as: 'items' }],
+        });
+
+        const updatedItems = invoice.items.map((item) => {
+          const device_ids = parseJSONSafe(item.device_ids);
+          const returned_device_ids = parseJSONSafe(item.returned_device_ids);
+          const remaining_device_ids = device_ids.filter(
+            (id) => !returned_device_ids.includes(id)
+          );
+
+          return {
+            ...item.toJSON(),
+            device_ids,
+            returned_device_ids,
+            remaining_device_ids,
+          };
+        });
+
+        return {
+          ...invoice.toJSON(),
+          items: updatedItems,
+          order_table_id: order?.order_id || null,
+          order_date: order?.order_date || null,
+          credit_notes: creditNotes.map((note) => ({
+            ...note.toJSON(),
+            items: note.items || [],
+          })),
+        };
+      })
+    );
+
+    // Group by YYYY-MM
+    const groupedInvoices = processedInvoices.reduce((acc, inv) => {
+      const date = new Date(inv.invoice_date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (!acc[monthKey]) acc[monthKey] = [];
+      acc[monthKey].push(inv);
+      return acc;
+    }, {});
+
+    return res.status(200).json({
+      success: true,
+      customer_id,
+      requested_up_to_month: `${inputDate.getFullYear()}-${String(inputDate.getMonth() + 1).padStart(2, '0')}`,
+      grouped_invoices: groupedInvoices,
+    });
+  } catch (error) {
+    console.error('Error fetching customer invoices:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    });
+  }
+};
+
+
 
 
 

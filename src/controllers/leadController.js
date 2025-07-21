@@ -75,35 +75,37 @@ export const createLead = async (req, res) => {
 
 // Get all Leads
 export const getAllLeads = async (req, res) => {
-    try {
-        const leads = await Lead.findAll({
-  include: [
-    {
-      model: Contact,
-      as: 'contact'
-    },
-    {
-      model: LeadProduct,
-      as: 'lead_products',
+  try {
+    const leads = await Lead.findAll({
       include: [
         {
-          model: ProductTemplete,
-          as: 'product'
+          model: Contact,
+          as: 'contact'
+        },
+        {
+          model: LeadProduct,
+          as: 'lead_products',
+          include: [
+            {
+              model: ProductTemplete,
+              as: 'product'
+            }
+          ]
         }
-      ]
-    }
-  ]
-});
+      ],
+      order: [['created_at', 'DESC']] // <-- Sort leads by created_at descending
+    });
 
-        res.status(200).json(leads);
-    } catch (error) {
-        console.error("Error fetching leads:", error);
-        res.status(500).json({
-            message: "Error fetching leads",
-            error
-        });
-    }
+    res.status(200).json(leads);
+  } catch (error) {
+    console.error("Error fetching leads:", error);
+    res.status(500).json({
+      message: "Error fetching leads",
+      error
+    });
+  }
 };
+
 
 export const getAllLeadsActived = async (req, res) => {
   try {

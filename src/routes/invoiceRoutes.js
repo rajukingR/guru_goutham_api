@@ -4,6 +4,8 @@ import {
   getAllInvoices,
   getAllApprovedInvoices ,
   getInvoiceById,
+  getCustomerInvoices,
+  getCustomerInvoicesByDate,
   getInvoicesByCustomerId,
   getInvoicesByInvoiceId,
   updateInvoice,
@@ -21,7 +23,9 @@ router.get("/", getAllInvoices);
 router.get("/approved-invoices", getAllApprovedInvoices );
 router.get("/:id", getInvoiceById);
 router.get("/get-customer-id/:id", getInvoicesByInvoiceId);
-
+router.get("/customer/:customer_id", getCustomerInvoices );
+router.get("/customer/:customer_id/:", getCustomerInvoices );
+router.get("/customer/:customer_id/:invoice_date", getCustomerInvoicesByDate);
 router.put("/:id", updateInvoice);
 router.delete("/:id", deleteInvoice);
 

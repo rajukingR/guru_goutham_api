@@ -104,10 +104,13 @@ export const createDeliveryChallan = async (req, res) => {
 export const getAllDeliveryChallans = async (req, res) => {
   try {
     const deliveryChallans = await DeliveryChallan.findAll({
-      include: [{
-        model: DeliveryChallanItem,
-        as: 'items', // <-- use the alias
-      }],
+      include: [
+        {
+          model: DeliveryChallanItem,
+          as: 'items', // <-- use the alias
+        }
+      ],
+      order: [['created_at', 'DESC']] // descending order
     });
     res.status(200).json(deliveryChallans);
   } catch (error) {
@@ -115,6 +118,7 @@ export const getAllDeliveryChallans = async (req, res) => {
     res.status(500).json({ message: 'Error fetching delivery challans', error });
   }
 };
+
 
 export const getAllDeliveryChallanDelivered = async (req, res) => {
   try {

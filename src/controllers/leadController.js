@@ -195,10 +195,10 @@ export const updateLead = async (req, res) => {
       payment_type,
       lead_source,
       source_of_enquiry,
-      // rental_duration_months,
-      // rental_duration_days,
-      // rental_start_date,
-      // rental_end_date,
+      rental_duration_months,
+      rental_duration_days,
+      rental_start_date,
+      rental_end_date,
       lead_date,
       owner,
       remarks,
@@ -216,10 +216,10 @@ export const updateLead = async (req, res) => {
       payment_type,
       lead_source,
       source_of_enquiry,
-      // rental_duration_months,
-      // rental_duration_days,
-      // rental_start_date,
-      // rental_end_date,
+      rental_duration_months,
+      rental_duration_days,
+      rental_start_date,
+      rental_end_date,
       lead_date,
       owner,
       remarks,
@@ -228,36 +228,37 @@ export const updateLead = async (req, res) => {
       contact_id
     });
 
-    // 🔄 Update the lead_products table
+    // Update the lead_products table
     if (Array.isArray(selected_products) && selected_products.length > 0) {
-  const productIds = selected_products.map(p => p.product_id);
+      // First delete all existing products for this lead
+      await db.LeadProduct.destroy({
+        where: { lead_id: lead.id }
+      });
 
-  // ✅ Validate all product_ids exist in ProductTemplete
-  const validProducts = await ProductTemplete.findAll({
-    where: { id: productIds },
-    attributes: ['id']
-  });
+      // Then add the new products
+      const productIds = selected_products.map(p => p.product_id);
 
-  const validIds = validProducts.map(p => p.id);
+      // Validate all product_ids exist in ProductTemplete
+      const validProducts = await ProductTemplete.findAll({
+        where: { id: productIds },
+        attributes: ['id']
+      });
 
-  const validLeadProductsData = selected_products
-    .filter(p => validIds.includes(p.product_id))
-    .map((product) => ({
-      lead_id: newLead.id,
-      product_id: product.product_id,
-      product_name: product.product_name,
-      quantity: product.quantity
-    }));
+      const validIds = validProducts.map(p => p.id);
 
-  if (validLeadProductsData.length !== selected_products.length) {
-    return res.status(400).json({
-      message: "One or more selected product IDs are invalid."
-    });
-  }
+      const validLeadProductsData = selected_products
+        .filter(p => validIds.includes(p.product_id))
+        .map((product) => ({
+          lead_id: lead.id,  // Use existing lead.id instead of newLead.id
+          product_id: product.product_id,
+          product_name: product.product_name,
+          quantity: product.quantity
+        }));
 
-  await db.LeadProduct.bulkCreate(validLeadProductsData);
-}
-
+      if (validLeadProductsData.length > 0) {
+        await db.LeadProduct.bulkCreate(validLeadProductsData);
+      }
+    }
 
     res.status(200).json({
       message: "Lead updated successfully",
@@ -265,10 +266,12 @@ export const updateLead = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating lead:", error);
-    res.status(500).json({ message: "Error updating lead", error });
+    res.status(500).json({ 
+      message: "Error updating lead", 
+      error: error.message 
+    });
   }
 };
-
 // Delete a Lead
 export const deleteLead = async (req, res) => {
     try {

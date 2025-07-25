@@ -59,9 +59,10 @@ export default (sequelize, DataTypes) => {
 PurchaseQuotation.associate = (models) => {
   PurchaseQuotation.belongsTo(models.Supplier, {
     foreignKey: 'supplier_id',
-    as: 'supplier', // <-- Must match with controller include
+    as: 'supplier',
   });
 };
+
 
 
   return PurchaseQuotation;

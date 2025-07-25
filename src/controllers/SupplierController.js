@@ -29,9 +29,9 @@ export const createSupplier = async (req, res) => {
       gst_number,
       introduced_by,
       description,
-      address: address,
-      bank: bank,
-      contacts: contacts
+      address,
+      bank,
+      contacts
     }, {
       include: [
         { model: SupplierAddress, as: 'address' },
@@ -134,7 +134,7 @@ export const updateSupplier = async (req, res) => {
       if (supplier.address) {
         await supplier.address.update(address);
       } else {
-        await SupplierAddress.create({ ...address, supplier_id: supplier.supplier_id });
+        await SupplierAddress.create({ ...address, supplier_id: supplier.id });
       }
     }
 
@@ -143,14 +143,14 @@ export const updateSupplier = async (req, res) => {
       if (supplier.bank) {
         await supplier.bank.update(bank);
       } else {
-        await BankDetail.create({ ...bank, supplier_id: supplier.supplier_id });
+        await BankDetail.create({ ...bank, supplier_id: supplier.id });
       }
     }
 
-    // Delete old contacts and create new ones
+    // Replace old contacts with new ones
     if (contacts) {
-      await SupplierContact.destroy({ where: { supplier_id: supplier.supplier_id } });
-      const newContacts = contacts.map(c => ({ ...c, supplier_id: supplier.supplier_id }));
+      await SupplierContact.destroy({ where: { supplier_id: supplier.id } });
+      const newContacts = contacts.map(c => ({ ...c, supplier_id: supplier.id }));
       await SupplierContact.bulkCreate(newContacts);
     }
 

@@ -2,6 +2,7 @@ import express from "express";
 import {
   createContact,
   getAllContacts,
+  getDeliveryChallansContact,
   getContactById,
   updateContact,
   deleteContact,
@@ -15,6 +16,7 @@ const router = express.Router();
 
 router.post("/create", createContact);
 router.get("/", getAllContacts);
+router.get("/delivered-contacts", getDeliveryChallansContact);
 router.get('/active-contacts', getAllContactsActived);
 router.get("/:id", getContactById);
 router.put("/:id", updateContact);

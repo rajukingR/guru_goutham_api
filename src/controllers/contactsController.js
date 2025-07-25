@@ -1,6 +1,10 @@
 import db from '../models/index.js';
+import { Op } from 'sequelize'; // ✅ ADD THIS LINE
 
 const Contact = db.Contact;
+
+const DeliveryChallan = db.DeliveryChallan;
+
 
 // Create a new contact with JSON address
 export const createContact = async (req, res) => {
@@ -54,10 +58,53 @@ export const createContact = async (req, res) => {
 // Get all contacts
 export const getAllContacts = async (req, res) => {
   try {
-    const contacts = await Contact.findAll();
+    const contacts = await Contact.findAll({
+      order: [['id', 'DESC']], // 👈 Sort by ID in descending order
+    });
     res.status(200).json(contacts);
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: 'Error fetching contacts', error });
+  }
+};
+
+
+
+const { Sequelize } = db;
+
+export const getDeliveryChallansContact = async (req, res) => {
+  try {
+    // Fetch distinct customer_code values from DeliveryChallan WHERE type != 'Buy'
+    const challanCustomers = await DeliveryChallan.findAll({
+      where: {
+        type: { [Op.ne]: 'Buy' }  // <-- Exclude 'Buy' type
+      },
+      attributes: [
+        [Sequelize.fn('DISTINCT', Sequelize.col('customer_code')), 'customer_code']
+      ],
+      raw: true
+    });
+
+    const customerCodes = challanCustomers
+      .map(item => item.customer_code)
+      .filter(Boolean);
+
+    if (customerCodes.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // Fetch matching contact details
+    const contacts = await Contact.findAll({
+      where: {
+        id: {
+          [Op.in]: customerCodes
+        }
+      }
+    });
+
+    res.status(200).json(contacts);
+  } catch (error) {
+    console.error('Error in getDeliveryChallansContact:', error);
     res.status(500).json({ message: 'Error fetching contacts', error });
   }
 };

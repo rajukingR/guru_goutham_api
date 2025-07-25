@@ -20,7 +20,7 @@ export const createPurchaseRequest = async (req, res) => {
       updated_at
     } = req.body;
 
-    if (!purchase_request_id || !purchase_request_date || !purchase_type || !purchase_request_status || !owner || !supplier_id) {
+    if (!purchase_request_id || !purchase_request_date || !purchase_type || !purchase_request_status || !supplier_id) {
       return res.status(400).json({ message: 'All required fields must be provided' });
     }
 
@@ -73,7 +73,8 @@ export const getAllPurchaseRequests = async (req, res) => {
             }
           ]
         }
-      ]
+      ],
+      order: [['id', 'DESC']] // 👈 Sort by ID in descending order
     });
 
     const formatted = purchaseRequests.map(request => {
@@ -105,6 +106,7 @@ export const getAllPurchaseRequests = async (req, res) => {
     res.status(500).json({ message: 'Error fetching purchase requests', error });
   }
 };
+
 
 export const getApprovedPurchaseRequests = async (req, res) => {
   try {

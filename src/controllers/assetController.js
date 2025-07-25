@@ -14,7 +14,7 @@ export const getAllAssetModifications = async (req, res) => {
   try {
     // 🔹 Step 1: Fetch returned device IDs from invoice_items
     const invoiceItems = await InvoiceItem.findAll({
-      attributes: ['invoice_id', 'product_id', 'returned_device_ids']
+      attributes: ['invoice_id', 'product_id', 'returned_device_ids'],
     });
 
     const returnedSet = new Set();

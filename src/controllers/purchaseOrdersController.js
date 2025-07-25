@@ -21,7 +21,15 @@ export const createPurchaseOrder = async (req, res) => {
       selected_products
     } = req.body;
 
-    // Create the main order
+    // ✅ Step 1: Validate supplier exists
+    const supplier = await Supplier.findByPk(supplier_id);
+    if (!supplier) {
+      return res.status(400).json({
+        message: `Supplier with ID ${supplier_id} does not exist`,
+      });
+    }
+
+    // ✅ Step 2: Create the main order
     const newOrder = await PurchaseOrder.create({
       purchase_order_id,
       purchase_quotation_id,
@@ -33,7 +41,7 @@ export const createPurchaseOrder = async (req, res) => {
       description
     }, { transaction: t });
 
-    // Insert associated product items
+    // ✅ Step 3: Insert associated product items
     if (selected_products && selected_products.length > 0) {
       const itemsData = selected_products.map(product => ({
         purchase_order_id: newOrder.id,
@@ -45,11 +53,17 @@ export const createPurchaseOrder = async (req, res) => {
     }
 
     await t.commit();
-    res.status(201).json({ message: 'Purchase Order and items created successfully', order: newOrder });
+    res.status(201).json({
+      message: 'Purchase Order and items created successfully',
+      order: newOrder
+    });
   } catch (error) {
     await t.rollback();
     console.error(error);
-    res.status(500).json({ message: 'Error creating purchase order', error });
+    res.status(500).json({
+      message: 'Error creating purchase order',
+      error
+    });
   }
 };
 
@@ -60,9 +74,11 @@ export const getAllPurchaseOrders = async (req, res) => {
         {
           model: Supplier,
           as: 'supplier', // Association alias must match model setup
-          attributes: ['supplier_id', 'supplier_name'],
+          attributes: ['id', 'supplier_name'],
         },
       ],
+            order: [['id', 'DESC']] // 👈 Sort by ID descending
+
     });
 
     res.status(200).json(orders);
@@ -85,7 +101,7 @@ export const getPurchaseOrderById = async (req, res) => {
          {
           model: db.Supplier,
           as: 'supplier',
-          attributes: ['supplier_id', 'supplier_name']
+          attributes: ['id', 'supplier_name']
         }
       ]
     });

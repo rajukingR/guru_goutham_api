@@ -46,9 +46,10 @@ export const getAllPurchaseQuotations = async (req, res) => {
         {
           model: Supplier,
           as: 'supplier', // Make sure this matches your association alias
-          attributes: ['supplier_id', 'supplier_name'], // Include only needed fields
+          attributes: ['id', 'supplier_name'], // Include only needed fields
         },
       ],
+      order: [['id', 'DESC']] // 👈 Sort by ID descending
     });
 
     res.status(200).json(quotations);
@@ -57,6 +58,7 @@ export const getAllPurchaseQuotations = async (req, res) => {
     res.status(500).json({ message: "Error fetching quotations", error });
   }
 };
+
 
 
 export const getApprovedPurchaseQuotations = async (req, res) => {
@@ -94,7 +96,7 @@ export const getPurchaseQuotationById = async (req, res) => {
         {
           model: Supplier,
           as: 'supplier', // Must match association alias
-          attributes: ['supplier_id', 'supplier_name'],
+          attributes: ['id', 'supplier_name'],
         },
       ],
     });

@@ -3,6 +3,7 @@ import {
   createDeliveryChallan,
   getAllDeliveryChallans,
   getAllDeliveryChallanDelivered,
+  getDeliveryChallansByCustomerCode,
   getDeliveryChallanById,
   updateDeliveryChallan,
   deleteDeliveryChallan
@@ -15,6 +16,7 @@ const router = express.Router();
 router.post('/create', createDeliveryChallan);
 router.get('/', getAllDeliveryChallans);
 router.get('/approved-delivery-challan', getAllDeliveryChallanDelivered);
+router.get('/customer/:customer_code', getDeliveryChallansByCustomerCode);
 router.get('/:id', getDeliveryChallanById);
 router.put('/:id', updateDeliveryChallan);
 router.delete('/:id', deleteDeliveryChallan);

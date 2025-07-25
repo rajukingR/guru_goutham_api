@@ -1,6 +1,6 @@
 export default (sequelize, DataTypes) => {
   const SupplierContact = sequelize.define('SupplierContact', {
-    contact_id: {
+    id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
@@ -31,11 +31,12 @@ export default (sequelize, DataTypes) => {
     timestamps: false,
   });
 
-
   SupplierContact.associate = models => {
-    SupplierContact.belongsTo(models.Supplier, { foreignKey: 'supplier_id' });
+    SupplierContact.belongsTo(models.Supplier, {
+      foreignKey: 'supplier_id',
+      as: 'supplier',
+    });
   };
 
-  
   return SupplierContact;
 };

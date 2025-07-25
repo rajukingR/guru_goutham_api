@@ -53,6 +53,10 @@ export default (sequelize, DataTypes) => {
       sourceKey: 'id',
       as: 'selected_products'
     });
+    GoodsReceipt.belongsTo(models.Supplier, {
+    foreignKey: 'supplier_id',
+    as: 'supplier',
+  });
   };
 
   return GoodsReceipt;

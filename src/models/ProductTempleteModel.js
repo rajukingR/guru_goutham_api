@@ -138,6 +138,57 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(10, 2),
     },
 
+    // New Hardware Specific Fields
+processor_model: {
+  type: DataTypes.STRING(100),
+},
+processor_speed: {
+  type: DataTypes.STRING(100),
+},
+generation: {
+  type: DataTypes.STRING(50),
+},
+ram_speed: {
+  type: DataTypes.STRING(100),
+},
+ram_slots: {
+  type: DataTypes.STRING(50),
+},
+cabinet: {
+  type: DataTypes.STRING(100),
+},
+motherboard: {
+  type: DataTypes.STRING(100),
+},
+smps: {
+  type: DataTypes.STRING(100),
+},
+capacity: {
+  type: DataTypes.STRING(100),
+},
+speed: {
+  type: DataTypes.STRING(100),
+},
+ramType: {
+  type: DataTypes.STRING(100),
+},
+sizeGb: {
+  type: DataTypes.STRING(100),
+},
+frequencyMhz: {
+  type: DataTypes.STRING(100),
+},
+manufacturer: {
+  type: DataTypes.STRING(100),
+},
+hsn_code: {
+  type: DataTypes.STRING(100),
+},
+display_size: {
+  type: DataTypes.STRING(100),
+},
+
+
     // Control
     is_active: {
       type: DataTypes.BOOLEAN,

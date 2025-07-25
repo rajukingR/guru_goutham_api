@@ -52,9 +52,9 @@ export default (sequelize, DataTypes) => {
 
    PurchaseOrder.associate = (models) => {
     PurchaseOrder.belongsTo(models.Supplier, {
-      foreignKey: 'supplier_id',
-      as: 'supplier',
-    });
+    foreignKey: 'supplier_id',
+    as: 'supplier',
+  });
 
      PurchaseOrder.hasMany(models.PurchaseOrderItem, {
     foreignKey: 'purchase_order_id',

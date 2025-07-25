@@ -17,6 +17,8 @@ const {
 
 } = db;
 
+const Supplier = db.Supplier;
+
 
 
 export const createGoodsReceipt = async (req, res) => {
@@ -151,10 +153,21 @@ export const getAllGoodsReceipts = async (req, res) => {
   try {
     const receipts = await GoodsReceipt.findAll({
       include: [{
-        model: GoodsReceiptItem,
-        as: 'selected_products'
-      }]
+          model: GoodsReceiptItem,
+          as: 'selected_products'
+        },
+        {
+          model: Supplier,
+          as: 'supplier',
+          attributes: ['id', 'supplier_name']
+        }
+      ],
+      order: [
+        ['id', 'DESC']
+      ] // 👈 Sort by ID descending
+
     });
+
     res.status(200).json(receipts);
   } catch (error) {
     console.error(error);
@@ -164,6 +177,7 @@ export const getAllGoodsReceipts = async (req, res) => {
     });
   }
 };
+
 
 // Get a single Goods Receipt by ID
 export const getGoodsReceiptById = async (req, res) => {
@@ -196,18 +210,25 @@ export const getApprovedProductSummary = async (req, res) => {
   try {
     // 1. Get Approved GRNs
     const approvedReceipts = await GoodsReceipt.findAll({
-      where: { goods_receipt_status: 'Approved' },
+      where: {
+        goods_receipt_status: 'Approved'
+      },
       attributes: ['id']
     });
     const approvedReceiptIds = approvedReceipts.map(r => r.id);
 
     if (approvedReceiptIds.length === 0) {
-      return res.status(200).json({ summary: {}, products: [] });
+      return res.status(200).json({
+        summary: {},
+        products: []
+      });
     }
 
     // 2. Fetch GoodsReceiptItems
     const receiptItems = await GoodsReceiptItem.findAll({
-      where: { goods_receipt_id: approvedReceiptIds },
+      where: {
+        goods_receipt_id: approvedReceiptIds
+      },
       attributes: ['product_id', 'quantity', 'asset_ids']
     });
 
@@ -217,9 +238,9 @@ export const getApprovedProductSummary = async (req, res) => {
     for (const item of receiptItems) {
       const productId = item.product_id;
       const qty = item.quantity || 0;
-      const assets = Array.isArray(item.asset_ids)
-        ? item.asset_ids
-        : JSON.parse(item.asset_ids || '[]');
+      const assets = Array.isArray(item.asset_ids) ?
+        item.asset_ids :
+        JSON.parse(item.asset_ids || '[]');
 
       quantityMap[productId] = (quantityMap[productId] || 0) + qty;
       if (!assetMap[productId]) assetMap[productId] = [];
@@ -241,7 +262,9 @@ export const getApprovedProductSummary = async (req, res) => {
     const usedDeviceMap = {};
 
     // Invoices
-    const invoiceItems = await InvoiceItem.findAll({ attributes: ['product_id', 'device_ids'] });
+    const invoiceItems = await InvoiceItem.findAll({
+      attributes: ['product_id', 'device_ids']
+    });
     for (const item of invoiceItems) {
       const pid = item.product_id;
       const ids = parseIds(item.device_ids);
@@ -251,7 +274,14 @@ export const getApprovedProductSummary = async (req, res) => {
 
     // Delivery Challans (Delivered)
     const deliveredChallanItems = await DeliveryChallanItem.findAll({
-      include: [{ model: DeliveryChallan, as: 'challan', where: { dc_status: 'Delivered' }, attributes: [] }],
+      include: [{
+        model: DeliveryChallan,
+        as: 'challan',
+        where: {
+          dc_status: 'Delivered'
+        },
+        attributes: []
+      }],
       attributes: ['product_id', 'device_ids']
     });
     for (const item of deliveredChallanItems) {
@@ -263,7 +293,14 @@ export const getApprovedProductSummary = async (req, res) => {
 
     // Dispatch Orders (Approved)
     const dispatchOrderItems = await DispatchOrderItem.findAll({
-      include: [{ model: DispatchOrder, as: 'dispatchOrder', where: { dispatch_order_status: 'Approved' }, attributes: [] }],
+      include: [{
+        model: DispatchOrder,
+        as: 'dispatchOrder',
+        where: {
+          dispatch_order_status: 'Approved'
+        },
+        attributes: []
+      }],
       attributes: ['product_id', 'device_ids']
     });
     for (const item of dispatchOrderItems) {
@@ -287,7 +324,11 @@ export const getApprovedProductSummary = async (req, res) => {
 
     // 5. Fetch product templates
     const productIds = Object.keys(quantityMap).map(Number);
-    const productTemplates = await ProductTemplete.findAll({ where: { id: productIds } });
+    const productTemplates = await ProductTemplete.findAll({
+      where: {
+        id: productIds
+      }
+    });
     const productMap = Object.fromEntries(productTemplates.map(p => [p.id, p.toJSON()]));
 
     // 6. Aggregate result

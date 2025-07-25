@@ -3,6 +3,7 @@ const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
 const InvoiceItem = db.InvoiceItem;
 const Contact = db.Contact;
+const ProductTemplete = db.ProductTemplete;
 
 export const createCreditNote = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -107,13 +108,25 @@ export const getAllCreditNotes = async (req, res) => {
 
 
 
-// Get a single credit note by ID
+// Get a single credit note by ID 
 export const getCreditNoteById = async (req, res) => {
   try {
     const note = await CreditNote.findByPk(req.params.id, {
       include: [
-        { model: CreditNoteItem, as: 'items' },
-        { model: Contact, as: 'customer' } // <-- This line includes the customer data
+        {
+          model: CreditNoteItem,
+          as: 'items',
+          include: [
+            {
+              model: ProductTemplete,
+              as: 'product' // This assumes you’ve aliased it properly in your associations
+            }
+          ]
+        },
+        {
+          model: Contact,
+          as: 'customer'
+        }
       ]
     });
 
@@ -129,6 +142,7 @@ export const getCreditNoteById = async (req, res) => {
     });
   }
 };
+
 
 
 

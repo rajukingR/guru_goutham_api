@@ -4,7 +4,6 @@ const { DeliveryChallan, DeliveryChallanItem,OrderItem,Order,DispatchOrder,Produ
 const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
 
-// Create Delivery Challan
 // Create Delivery Challan 
 export const createDeliveryChallan = async (req, res) => {
   try {
@@ -120,6 +119,7 @@ export const getAllDeliveryChallans = async (req, res) => {
 };
 
 
+
 export const getAllDeliveryChallanDelivered = async (req, res) => {
   try {
     // Step 1: Fetch all CreditNotes and CreditNoteItems
@@ -208,6 +208,92 @@ export const getAllDeliveryChallanDelivered = async (req, res) => {
 
 
 
+
+
+// Get Delivery Challans by Customer Code
+export const getDeliveryChallansByCustomerCode = async (req, res) => {
+  const { customer_code } = req.params;
+
+  // Helper to safely parse device_ids
+  function parseDeviceIds(deviceIdsRaw) {
+    if (!deviceIdsRaw) return [];
+    try {
+      const parsed = typeof deviceIdsRaw === 'string' ? JSON.parse(deviceIdsRaw) : deviceIdsRaw;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      console.warn('Invalid device_ids JSON in credit note:', deviceIdsRaw);
+      return [];
+    }
+  }
+
+  try {
+    // 1. Fetch delivery challans with items
+    const deliveryChallans = await DeliveryChallan.findAll({
+      where: { customer_code },
+      include: [
+        {
+          model: DeliveryChallanItem,
+          as: 'items',
+        }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+
+    // 2. Get all dispatch_order_ids
+    const dispatchOrderIds = deliveryChallans.map(dc => dc.dispatch_order_id);
+
+    // 3. Fetch related credit notes and their items
+    const creditNotes = await CreditNote.findAll({
+      where: {
+        dispatch_order_id: dispatchOrderIds
+      },
+      include: [
+        {
+          model: CreditNoteItem,
+          as: 'items'
+        }
+      ]
+    });
+
+    // 4. Build credit note item map per dispatch_order_id
+    const creditNoteMap = {};
+    creditNotes.forEach(cn => {
+      if (!creditNoteMap[cn.dispatch_order_id]) {
+        creditNoteMap[cn.dispatch_order_id] = [];
+      }
+      creditNoteMap[cn.dispatch_order_id].push(...(cn.items || []));
+    });
+
+    // 5. Mutate each deliveryChallanItem's quantity & device_ids
+    for (const challan of deliveryChallans) {
+      const creditItems = creditNoteMap[challan.dispatch_order_id] || [];
+
+      for (const item of challan.items) {
+        const originalDeviceIds = parseDeviceIds(item.device_ids);
+        let updatedDeviceIds = [...originalDeviceIds];
+
+        const matchingReturns = creditItems.filter(
+          ci => ci.product_id === item.product_id
+        );
+
+        for (const ret of matchingReturns) {
+          const returnedIds = parseDeviceIds(ret.device_ids);
+          // Remove returned device_ids from current device_ids
+          updatedDeviceIds = updatedDeviceIds.filter(id => !returnedIds.includes(id));
+        }
+
+        // Set the filtered device_ids and updated quantity
+        item.device_ids = updatedDeviceIds;
+        item.quantity = updatedDeviceIds.length;
+      }
+    }
+
+    res.status(200).json(deliveryChallans);
+  } catch (error) {
+    console.error('Error fetching delivery challans by customer_code:', error);
+    res.status(500).json({ message: 'Error fetching delivery challans', error });
+  }
+};
 
 
 
@@ -323,8 +409,8 @@ export const updateDeliveryChallan = async (req, res) => {
       order_id,
       customer_code,
       order_number,
-      dispatch_order_number:order_id,
-      dispatch_order_id,
+      dispatch_order_number,
+      dispatch_order_id: order_id,
       dc_date,
       dc_status,
       dealer_reference,

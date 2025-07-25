@@ -39,6 +39,11 @@ export default (sequelize, DataTypes) => {
       foreignKey: 'credit_note_id',
       as: 'credit_note',
     });
+
+    CreditNoteItem.belongsTo(models.ProductTemplete, {
+      foreignKey: 'product_id',
+      as: 'product'
+    });
   };
 
   return CreditNoteItem;

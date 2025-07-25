@@ -1,6 +1,6 @@
 export default (sequelize, DataTypes) => {
   const SupplierAddress = sequelize.define('SupplierAddress', {
-    address_id: {
+    id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
@@ -46,9 +46,12 @@ export default (sequelize, DataTypes) => {
     timestamps: false,
   });
 
-   SupplierAddress.associate = models => {
-    SupplierAddress.belongsTo(models.Supplier, { foreignKey: 'supplier_id' });
+  SupplierAddress.associate = models => {
+    SupplierAddress.belongsTo(models.Supplier, {
+      foreignKey: 'supplier_id',
+      as: 'supplier',
+    });
   };
-  
+
   return SupplierAddress;
 };

@@ -108,10 +108,115 @@ export const getAllApprovedDispatchOrders = async (req, res) => {
 };
 
 
+/// 22-07-25
+
+
+
+
+// export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
+//   try {
+//     // Step 1: Get dispatch_order_ids with approved GRNs
+//     const grnApprovedDispatchOrderIds = await GRN.findAll({
+//       attributes: ['dispatch_order_id'],
+//       where: {
+//         grn_status: "Approved"
+//       },
+//       raw: true,
+//     });
+
+//     const excludeIds = grnApprovedDispatchOrderIds.map(grn => grn.dispatch_order_id);
+
+//     // Step 2: Fetch dispatch orders with required associations
+//     const approvedOrders = await DispatchOrder.findAll({
+//       where: {
+//         dispatch_order_status: "Approved",
+//         id: {
+//           [Op.notIn]: excludeIds
+//         },
+//       },
+//       include: [{
+//           model: DispatchOrderItem,
+//           as: "items",
+//         },
+//         {
+//           model: Contact,
+//           as: "contact",
+//         },
+//         {
+//           model: DeliveryChallan,
+//           as: "delivery_challans",
+//           where: {
+//             dc_status: "Delivered"
+//           },
+//           required: true,
+//         },
+//       ],
+//       order: [
+//         ["id", "DESC"]
+//       ],
+//     });
+
+//     // Step 3: Subtract returned qty and devices from each item
+//     for (const order of approvedOrders) {
+//       // Fetch all CreditNoteItems for this dispatch order
+//       const creditNotes = await CreditNote.findAll({
+//         where: {
+//           dispatch_order_id: order.id
+//         },
+//         include: [{
+//           model: CreditNoteItem,
+//           as: 'items', // ✅ Correct alias here
+//         }, ],
+//       });
+
+
+//       let allReturnedItems = [];
+//       for (const creditNote of creditNotes) {
+//         for (const item of creditNote.items) { // ✅ Fixed alias here
+//           allReturnedItems.push({
+//             product_id: item.product_id,
+//             returned_quantity: item.quantity,
+//             returned_device_ids: item.device_ids || [],
+//           });
+//         }
+//       }
+
+
+//       // Apply subtraction to each DispatchOrderItem
+//       for (const item of order.items) {
+//         const matchedReturns = allReturnedItems.filter(ret => ret.product_id === item.product_id);
+
+//         let totalReturnedQty = 0;
+//         let returnedDeviceIds = [];
+
+//         for (const ret of matchedReturns) {
+//           totalReturnedQty += ret.returned_quantity;
+//           if (Array.isArray(ret.returned_device_ids)) {
+//             returnedDeviceIds.push(...ret.returned_device_ids);
+//           }
+//         }
+
+//         // Final updated values only
+//         item.dataValues.quantity = Math.max(0, item.quantity - totalReturnedQty);
+//         item.dataValues.device_ids = item.device_ids?.filter(id => !returnedDeviceIds.includes(id));
+//       }
+//     }
+
+//     res.json(approvedOrders);
+//   } catch (err) {
+//     console.error("Error fetching filtered dispatch orders:", err);
+//     res.status(500).json({
+//       message: "Failed to fetch filtered dispatch orders",
+//       error: err.message,
+//     });
+//   }
+// };
+
+
 
 export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
   try {
-    // Step 1: Get dispatch_order_ids with approved GRNs
+    // Step 1: Get GRN-approved DispatchOrder IDs
     const grnApprovedDispatchOrderIds = await GRN.findAll({
       attributes: ['dispatch_order_id'],
       where: {
@@ -119,18 +224,16 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
       },
       raw: true,
     });
-
     const excludeIds = grnApprovedDispatchOrderIds.map(grn => grn.dispatch_order_id);
 
-    // Step 2: Fetch dispatch orders with required associations
-    const approvedOrders = await DispatchOrder.findAll({
+    // Step 2: Fetch ALL Approved Dispatch Orders (Rent & Buy)
+    const allApprovedOrders = await DispatchOrder.findAll({
       where: {
         dispatch_order_status: "Approved",
-        id: {
-          [Op.notIn]: excludeIds
-        },
+        id: { [Op.notIn]: excludeIds },
       },
-      include: [{
+      include: [
+        {
           model: DispatchOrderItem,
           as: "items",
         },
@@ -141,34 +244,41 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
         {
           model: DeliveryChallan,
           as: "delivery_challans",
-          where: {
-            dc_status: "Delivered"
-          },
+          where: { dc_status: "Delivered" },
           required: true,
         },
       ],
-      order: [
-        ["id", "DESC"]
-      ],
+      order: [["id", "DESC"]],
     });
 
-    // Step 3: Subtract returned qty and devices from each item
-    for (const order of approvedOrders) {
-      // Fetch all CreditNoteItems for this dispatch order
+    // Step 3: Filter logic based on type
+    const latestRentPerCustomer = {};
+    const buyOrders = [];
+
+    for (const order of allApprovedOrders) {
+      if (order.type === "Buy") {
+        buyOrders.push(order); // ✅ Collect ALL Buy orders
+      } else if (order.type === "Rent") {
+        const customerCode = order.customer_code || order.contact?.id;
+        if (!latestRentPerCustomer[customerCode]) {
+          latestRentPerCustomer[customerCode] = order; // ✅ Keep only LATEST Rent order per customer
+        }
+      }
+    }
+
+    // Combine Rent (latest only) + ALL Buy orders
+    const combinedOrders = [...Object.values(latestRentPerCustomer), ...buyOrders];
+
+    // Step 4: Subtract returned qty/device_ids for each order
+    for (const order of combinedOrders) {
       const creditNotes = await CreditNote.findAll({
-        where: {
-          dispatch_order_id: order.id
-        },
-        include: [{
-          model: CreditNoteItem,
-          as: 'items', // ✅ Correct alias here
-        }, ],
+        where: { dispatch_order_id: order.id },
+        include: [{ model: CreditNoteItem, as: 'items' }],
       });
 
-
-      let allReturnedItems = [];
+      const allReturnedItems = [];
       for (const creditNote of creditNotes) {
-        for (const item of creditNote.items) { // ✅ Fixed alias here
+        for (const item of creditNote.items) {
           allReturnedItems.push({
             product_id: item.product_id,
             returned_quantity: item.quantity,
@@ -177,11 +287,8 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
         }
       }
 
-
-      // Apply subtraction to each DispatchOrderItem
       for (const item of order.items) {
         const matchedReturns = allReturnedItems.filter(ret => ret.product_id === item.product_id);
-
         let totalReturnedQty = 0;
         let returnedDeviceIds = [];
 
@@ -192,21 +299,24 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
           }
         }
 
-        // Final updated values only
         item.dataValues.quantity = Math.max(0, item.quantity - totalReturnedQty);
         item.dataValues.device_ids = item.device_ids?.filter(id => !returnedDeviceIds.includes(id));
       }
     }
+    // Final sort by ID DESC
+const sortedCombinedOrders = combinedOrders.sort((a, b) => b.id - a.id);
 
-    res.json(approvedOrders);
+
+    res.json(sortedCombinedOrders); // ✅ Final combined result
   } catch (err) {
-    console.error("Error fetching filtered dispatch orders:", err);
+    console.error("Error fetching dispatch orders:", err);
     res.status(500).json({
       message: "Failed to fetch filtered dispatch orders",
       error: err.message,
     });
   }
 };
+
 
 
 

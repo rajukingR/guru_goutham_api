@@ -17,6 +17,10 @@ const AssetModification = db.AssetModification;
 const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
 
+const DeliveryChallan = db.DeliveryChallan;
+const DeliveryChallanItem = db.DeliveryChallanItem;
+
+
 export const createInvoice = async (req, res) => {
   try {
     if (!req.body.items || !req.body.items.length) {
@@ -392,9 +396,9 @@ export const createInvoice = async (req, res) => {
 // // // Get all invoices
 
 
-
 export const getAllInvoices = async (req, res) => {
   try {
+    // Fetch all invoices with related items, sorted by created_at DESC
     const invoices = await Invoice.findAll({
       include: [
         {
@@ -403,13 +407,16 @@ export const getAllInvoices = async (req, res) => {
           attributes: ["id", "product_id", "returned_date"],
         },
       ],
-      order: [["created_at", "DESC"]],
+  order: [["id", "DESC"]], // 👈 sort by id descending
     });
 
-    // Get all dispatch_order_ids
-    const dispatchOrderIds = invoices.map((inv) => inv.dispatch_order_id).filter(Boolean);
 
-    // Fetch all credit notes with returned_date grouped by dispatch_order_id
+    // Step 2: Extract dispatch_order_ids for credit note lookup
+    const dispatchOrderIds = invoices
+      .map(inv => inv.dispatch_order_id)
+      .filter(Boolean);
+
+    // Step 3: Fetch credit notes with returned_date for those dispatch orders
     const creditNotes = await db.CreditNote.findAll({
       where: {
         dispatch_order_id: {
@@ -422,24 +429,23 @@ export const getAllInvoices = async (req, res) => {
       attributes: ["dispatch_order_id", "returned_date"],
     });
 
+    // Step 4: Group returned dates by dispatch_order_id
     const groupedReturns = {};
-    creditNotes.forEach((note) => {
-      if (!groupedReturns[note.dispatch_order_id]) {
-        groupedReturns[note.dispatch_order_id] = [];
-      }
-      groupedReturns[note.dispatch_order_id].push(note.returned_date);
+    creditNotes.forEach(note => {
+      const id = note.dispatch_order_id;
+      if (!groupedReturns[id]) groupedReturns[id] = [];
+      groupedReturns[id].push(note.returned_date);
     });
 
-    // Merge returned_date into invoice list
-    const finalResult = invoices.map((inv) => {
-  const returnedDates = groupedReturns[inv.dispatch_order_id] || [];
-
-  return {
-    ...inv.toJSON(),
-    credit_note_returned_dates: returnedDates.length > 0 ? returnedDates[0] : null, // or use .at(-1) for latest
-  };
-});
-
+    // Step 5: Attach returned_date to corresponding invoice
+    const finalResult = invoices.map(inv => {
+      const returnedDates = groupedReturns[inv.dispatch_order_id] || [];
+      return {
+        ...inv.toJSON(),
+        credit_note_returned_dates: returnedDates.length > 0 ? returnedDates[0] : null,
+        // Use `.at(-1)` if you want latest return date instead of first one
+      };
+    });
 
     res.status(200).json(finalResult);
   } catch (error) {
@@ -450,6 +456,7 @@ export const getAllInvoices = async (req, res) => {
     });
   }
 };
+
 
 
 
@@ -824,81 +831,199 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 
 
 
+
+
+///22-07-25
+
+// export const getInvoiceById = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     // 1. Fetch invoice with items and shipping details
+//     const invoice = await Invoice.findByPk(id, {
+//       include: [
+//         {
+//           model: InvoiceItem,
+//           as: 'items',
+//           include: [
+//             {
+//               model: ProductTemplete,
+//               as: 'productDetails',
+//             },
+//           ],
+//         },
+//         {
+//           model: InvoiceShippingDetail,
+//           as: 'shippingDetail',
+//         },
+//       ],
+//     });
+
+//     if (!invoice) {
+//       return res.status(404).json({
+//         message: 'Invoice not found',
+//       });
+//     }
+
+//     // 2. Fetch related order details
+//     const order = await Order.findByPk(invoice.order_id);
+//     const order_date = order?.order_date || null;
+//     const order_table_id = order?.order_id || null;
+
+//     // 3. Safe JSON parsing
+//     const parseJSONSafe = (input) => {
+//       try {
+//         if (typeof input === 'string') return JSON.parse(input);
+//         return Array.isArray(input) ? input : [];
+//       } catch {
+//         return [];
+//       }
+//     };
+
+//     // 4. Format invoice items
+//     const updatedItems = invoice.items.map((item) => {
+//       const device_ids = parseJSONSafe(item.device_ids);
+//       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
+//       const remaining_device_ids = device_ids.filter(
+//         (id) => !returned_device_ids.includes(id)
+//       );
+
+//       return {
+//         ...item.toJSON(),
+//         device_ids,
+//         returned_device_ids,
+//         remaining_device_ids,
+//       };
+//     });
+
+//     // 5. Fetch related credit notes using dispatch_order_id
+//     const creditNotes = await CreditNote.findAll({
+//       where: {
+//         dispatch_order_id: invoice.dispatch_order_id,
+//       },
+//       include: [
+//         {
+//           model: CreditNoteItem,
+//           as: 'items',
+//         },
+//       ],
+//     });
+
+//     // 6. Filter: only credit notes with returned_date exactly 1 month before invoice_start_date
+//     const invoiceStart = new Date(invoice.invoice_start_date);
+//     const invoiceStartMonth = invoiceStart.getMonth();
+//     const invoiceStartYear = invoiceStart.getFullYear();
+
+//     const formattedCreditNotes = creditNotes
+//       .map((note) => note.toJSON())
+//       .filter((note) => {
+//         if (!note.returned_date) return false;
+
+//         const returnedDate = new Date(note.returned_date);
+//         const returnedMonth = returnedDate.getMonth();
+//         const returnedYear = returnedDate.getFullYear();
+
+//         // Handle year-end crossover (e.g., Jan - Dec)
+//         const isOneMonthBefore =
+//           (invoiceStartMonth === 0 && returnedMonth === 11 && invoiceStartYear - returnedYear === 1) ||
+//           (returnedYear === invoiceStartYear && invoiceStartMonth - returnedMonth === 1);
+
+//         return isOneMonthBefore;
+//       })
+//       .map((note) => ({
+//         ...note,
+//         items: note.items || [],
+//       }));
+
+//     // 7. Build final response
+//     const invoiceJSON = invoice.toJSON();
+//     invoiceJSON.items = updatedItems;
+//     invoiceJSON.order_table_id = order_table_id;
+//     invoiceJSON.order_date = order_date;
+//     invoiceJSON.rental_start_date = invoice.rental_start_date;
+//     invoiceJSON.rental_end_date = invoice.rental_end_date;
+//     invoiceJSON.credit_notes = formattedCreditNotes;
+
+//     return res.status(200).json(invoiceJSON);
+//   } catch (error) {
+//     console.error('Error fetching invoice:', error);
+//     res.status(500).json({
+//       message: 'Internal server error',
+//       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+//     });
+//   }
+// };
+
+
+
+
+
 export const getInvoiceById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const {
+      id
+    } = req.params;
 
-    // 1. Fetch invoice with items and shipping details
     const invoice = await Invoice.findByPk(id, {
-      include: [
-        {
+      include: [{
           model: InvoiceItem,
-          as: 'items',
-          include: [
-            {
-              model: ProductTemplete,
-              as: 'productDetails',
-            },
-          ],
+          as: "items",
+          include: [{
+            model: ProductTemplete,
+            as: "productDetails",
+          }, ],
         },
         {
           model: InvoiceShippingDetail,
-          as: 'shippingDetail',
+          as: "shippingDetail",
         },
       ],
     });
 
     if (!invoice) {
       return res.status(404).json({
-        message: 'Invoice not found',
+        message: "Invoice not found"
       });
     }
 
-    // 2. Fetch related order details
     const order = await Order.findByPk(invoice.order_id);
     const order_date = order?.order_date || null;
     const order_table_id = order?.order_id || null;
 
-    // 3. Safe JSON parsing
     const parseJSONSafe = (input) => {
       try {
-        if (typeof input === 'string') return JSON.parse(input);
+        if (typeof input === "string") return JSON.parse(input);
         return Array.isArray(input) ? input : [];
       } catch {
         return [];
       }
     };
 
-    // 4. Format invoice items
+    // Update main invoice items (if needed)
     const updatedItems = invoice.items.map((item) => {
       const device_ids = parseJSONSafe(item.device_ids);
       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
-      const remaining_device_ids = device_ids.filter(
-        (id) => !returned_device_ids.includes(id)
-      );
 
       return {
         ...item.toJSON(),
-        device_ids,
+        device_ids: device_ids.filter(
+          (id) => !returned_device_ids.includes(id)
+        ),
         returned_device_ids,
-        remaining_device_ids,
       };
     });
 
-    // 5. Fetch related credit notes using dispatch_order_id
+    // Filter root credit notes
     const creditNotes = await CreditNote.findAll({
       where: {
-        dispatch_order_id: invoice.dispatch_order_id,
+        dispatch_order_id: invoice.dispatch_order_id
       },
-      include: [
-        {
-          model: CreditNoteItem,
-          as: 'items',
-        },
-      ],
+      include: [{
+        model: CreditNoteItem,
+        as: "items"
+      }],
     });
 
-    // 6. Filter: only credit notes with returned_date exactly 1 month before invoice_start_date
     const invoiceStart = new Date(invoice.invoice_start_date);
     const invoiceStartMonth = invoiceStart.getMonth();
     const invoiceStartYear = invoiceStart.getFullYear();
@@ -907,38 +1032,144 @@ export const getInvoiceById = async (req, res) => {
       .map((note) => note.toJSON())
       .filter((note) => {
         if (!note.returned_date) return false;
+        const returnedDate = new Date(note.returned_date);
+        const returnedMonth = returnedDate.getMonth();
+        const returnedYear = returnedDate.getFullYear();
+
+        const isOneMonthBefore =
+          (invoiceStartMonth === 0 &&
+            returnedMonth === 11 &&
+            invoiceStartYear - returnedYear === 1) ||
+          (returnedYear === invoiceStartYear &&
+            invoiceStartMonth - returnedMonth === 1);
+
+        return isOneMonthBefore;
+      });
+
+    // Fetch additional delivery challans before current invoice.dc_date
+    const invoiceDcDate = new Date(invoice.dc_date);
+
+    const otherChallans = await DeliveryChallan.findAll({
+      where: {
+        [Op.and]: [{
+            customer_code: invoice.customer_id.toString()
+          },
+          {
+            dispatch_order_id: {
+              [Op.ne]: invoice.dispatch_order_id
+            }
+          },
+          {
+            dc_date: {
+              [Op.lt]: invoiceDcDate
+            }
+          },
+        ],
+      },
+      include: [{
+        model: DeliveryChallanItem,
+        as: "items",
+        include: [{
+          model: ProductTemplete,
+          as: "product",
+        }, ],
+      }, ],
+    });
+
+    const additionalDeliveryChallans = [];
+
+    for (const challan of otherChallans) {
+      const challanDispatchOrderId = challan.dispatch_order_id;
+
+      const challanCreditNotes = await CreditNote.findAll({
+        where: {
+          dispatch_order_id: challanDispatchOrderId
+        },
+        include: [{
+          model: CreditNoteItem,
+          as: "items"
+        }],
+      });
+
+      const filteredNotes = [];
+
+      for (const note of challanCreditNotes) {
+        if (!note.returned_date) continue;
 
         const returnedDate = new Date(note.returned_date);
         const returnedMonth = returnedDate.getMonth();
         const returnedYear = returnedDate.getFullYear();
 
-        // Handle year-end crossover (e.g., Jan - Dec)
         const isOneMonthBefore =
-          (invoiceStartMonth === 0 && returnedMonth === 11 && invoiceStartYear - returnedYear === 1) ||
-          (returnedYear === invoiceStartYear && invoiceStartMonth - returnedMonth === 1);
+          (invoiceStartMonth === 0 &&
+            returnedMonth === 11 &&
+            invoiceStartYear - returnedYear === 1) ||
+          (returnedYear === invoiceStartYear &&
+            invoiceStartMonth - returnedMonth === 1);
 
-        return isOneMonthBefore;
-      })
-      .map((note) => ({
-        ...note,
-        items: note.items || [],
-      }));
+        if (!isOneMonthBefore) continue;
 
-    // 7. Build final response
+        const noteJSON = note.toJSON();
+
+        // 🆕 Inject productDetails into each credit note item
+        for (const item of noteJSON.items) {
+          const product = await ProductTemplete.findOne({
+            where: {
+              id: item.product_id
+            },
+          });
+          item.productDetails = product?.toJSON() || null;
+        }
+
+        filteredNotes.push(noteJSON);
+      }
+
+      const challanJSON = challan.toJSON();
+      challanJSON.credit_notes = filteredNotes;
+
+      // 🆕 Update device_ids and quantity in challan items by subtracting returned ones
+      challanJSON.items = challanJSON.items.map((item) => {
+        let returnedDeviceIds = [];
+
+        filteredNotes.forEach((note) => {
+          note.items.forEach((ri) => {
+            if (ri.product_id === item.product_id) {
+              returnedDeviceIds.push(...ri.device_ids);
+            }
+          });
+        });
+
+        const originalDeviceIds = item.device_ids || [];
+        const updatedDeviceIds = originalDeviceIds.filter(
+          (id) => !returnedDeviceIds.includes(id)
+        );
+
+        return {
+          ...item,
+          device_ids: updatedDeviceIds,
+          quantity: updatedDeviceIds.length,
+        };
+      });
+
+      additionalDeliveryChallans.push(challanJSON);
+    }
+
+
     const invoiceJSON = invoice.toJSON();
     invoiceJSON.items = updatedItems;
     invoiceJSON.order_table_id = order_table_id;
     invoiceJSON.order_date = order_date;
+    invoiceJSON.credit_notes = formattedCreditNotes;
+    invoiceJSON.additional_delivery_challans = additionalDeliveryChallans;
     invoiceJSON.rental_start_date = invoice.rental_start_date;
     invoiceJSON.rental_end_date = invoice.rental_end_date;
-    invoiceJSON.credit_notes = formattedCreditNotes;
 
     return res.status(200).json(invoiceJSON);
   } catch (error) {
-    console.error('Error fetching invoice:', error);
+    console.error("Error fetching invoice:", error);
     res.status(500).json({
-      message: 'Internal server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -946,31 +1177,33 @@ export const getInvoiceById = async (req, res) => {
 
 
 
-
 export const getCustomerInvoices = async (req, res) => {
   try {
-    const { customer_id } = req.params;
+    const {
+      customer_id
+    } = req.params;
 
     // 1. Fetch all invoices for the customer with items and shipping details
     const invoices = await Invoice.findAll({
-      where: { customer_id },
-      include: [
-        {
+      where: {
+        customer_id
+      },
+      include: [{
           model: InvoiceItem,
           as: 'items',
-          include: [
-            {
-              model: ProductTemplete,
-              as: 'productDetails',
-            },
-          ],
+          include: [{
+            model: ProductTemplete,
+            as: 'productDetails',
+          }, ],
         },
         {
           model: InvoiceShippingDetail,
           as: 'shippingDetail',
         },
       ],
-      order: [['invoice_date', 'ASC']], // Oldest first
+      order: [
+        ['invoice_date', 'ASC']
+      ], // Oldest first
     });
 
     if (!invoices || invoices.length === 0) {
@@ -993,11 +1226,16 @@ export const getCustomerInvoices = async (req, res) => {
     const processedInvoices = await Promise.all(invoices.map(async (invoice) => {
       // Fetch related order details
       const order = await Order.findByPk(invoice.order_id);
-      
+
       // Fetch related credit notes
       const creditNotes = await CreditNote.findAll({
-        where: { dispatch_order_id: invoice.dispatch_order_id },
-        include: [{ model: CreditNoteItem, as: 'items' }],
+        where: {
+          dispatch_order_id: invoice.dispatch_order_id
+        },
+        include: [{
+          model: CreditNoteItem,
+          as: 'items'
+        }],
       });
 
       // Format invoice items
@@ -1060,15 +1298,24 @@ export const getCustomerInvoices = async (req, res) => {
 
 export const getCustomerInvoicesByDate = async (req, res) => {
   try {
-    const { customer_id, invoice_date } = req.params;
+    const {
+      customer_id,
+      invoice_date
+    } = req.params;
 
     if (!customer_id || !invoice_date) {
-      return res.status(400).json({ success: false, message: 'Missing customer_id or invoice_date' });
+      return res.status(400).json({
+        success: false,
+        message: 'Missing customer_id or invoice_date'
+      });
     }
 
     const inputDate = new Date(invoice_date);
     if (isNaN(inputDate)) {
-      return res.status(400).json({ success: false, message: 'Invalid invoice_date format' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid invoice_date format'
+      });
     }
 
     // Calculate last day of selected month
@@ -1082,11 +1329,18 @@ export const getCustomerInvoicesByDate = async (req, res) => {
           [Op.lte]: endOfMonth,
         },
       },
-      include: [
-        { model: InvoiceItem, as: 'items' },
-        { model: InvoiceShippingDetail, as: 'shippingDetail' },
+      include: [{
+          model: InvoiceItem,
+          as: 'items'
+        },
+        {
+          model: InvoiceShippingDetail,
+          as: 'shippingDetail'
+        },
       ],
-      order: [['invoice_date', 'ASC']],
+      order: [
+        ['invoice_date', 'ASC']
+      ],
     });
 
     // Remove duplicate invoices based on invoice_number
@@ -1119,8 +1373,13 @@ export const getCustomerInvoicesByDate = async (req, res) => {
         const order = await Order.findByPk(invoice.order_id);
 
         const creditNotes = await CreditNote.findAll({
-          where: { dispatch_order_id: invoice.dispatch_order_id },
-          include: [{ model: CreditNoteItem, as: 'items' }],
+          where: {
+            dispatch_order_id: invoice.dispatch_order_id
+          },
+          include: [{
+            model: CreditNoteItem,
+            as: 'items'
+          }],
         });
 
         const updatedItems = invoice.items.map((item) => {

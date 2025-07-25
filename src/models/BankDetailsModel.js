@@ -1,6 +1,6 @@
 export default (sequelize, DataTypes) => {
   const BankDetail = sequelize.define('BankDetail', {
-    bank_id: {
+    id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,

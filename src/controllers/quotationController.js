@@ -239,35 +239,9 @@ export const getQuotationById = async (req, res) => {
 // Update quotation
 export const updateQuotation = async (req, res) => {
   try {
-    const {
-      id
-    } = req.params;
+    const { id } = req.params;
     const {
       quotation_title,
-      // rental_start_date,
-      // rental_end_date,
-      quotation_date,
-      rental_duration,
-      rental_duration_days,
-      transaction_type,
-      payment_type,
-      remarks,
-      quotation_generated_by,
-      status,
-      customer_id,
-      customer_first_name,
-      customer_last_name
-    } = req.body;
-
-    const quotation = await Quotation.findByPk(id);
-    if (!quotation) return res.status(404).json({
-      message: 'Quotation not found'
-    });
-
-    await quotation.update({
-      quotation_title,
-      // rental_start_date,
-      // rental_end_date,
       quotation_date,
       rental_duration,
       rental_duration_days,
@@ -279,8 +253,53 @@ export const updateQuotation = async (req, res) => {
       customer_id,
       customer_first_name,
       customer_last_name,
+      items, // Add items from request body
+      lead_id // Add lead_id from request body
+    } = req.body;
+
+    const quotation = await Quotation.findByPk(id);
+    if (!quotation) {
+      return res.status(404).json({ message: 'Quotation not found' });
+    }
+
+    // Update basic quotation details
+    await quotation.update({
+      quotation_title,
+      quotation_date,
+      rental_duration,
+      rental_duration_days,
+      transaction_type,
+      payment_type,
+      remarks,
+      quotation_generated_by,
+      status,
+      customer_id,
+      customer_first_name,
+      customer_last_name,
+      lead_id, // Update lead_id if changed
       updated_at: new Date()
     });
+
+    // Handle quotation items updates
+    if (items && items.length > 0) {
+      // First, remove all existing quotation items
+      await QuotationItem.destroy({
+        where: { quotation_id: id }
+      });
+
+      // Then create new quotation items
+      const quotationItems = items.map(item => ({
+        quotation_id: id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        requested_quantity: item.requested_quantity,
+        quotation_quantity: item.quotation_quantity,
+        created_at: new Date(),
+        updated_at: new Date()
+      }));
+
+      await QuotationItem.bulkCreate(quotationItems);
+    }
 
     res.status(200).json({
       message: 'Quotation updated successfully',
@@ -290,7 +309,7 @@ export const updateQuotation = async (req, res) => {
     console.error(error);
     res.status(500).json({
       message: 'Error updating quotation',
-      error
+      error: error.message
     });
   }
 };

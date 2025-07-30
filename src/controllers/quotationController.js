@@ -141,6 +141,8 @@ export const getAllQuotationsApproved = async (req, res) => {
           ],
         },
       ],
+                  order: [['id', 'DESC']] // <-- Sort leads by created_at descending
+
     });
 
     const approvedOrders = await Order.findAll({

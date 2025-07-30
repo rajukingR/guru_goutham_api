@@ -126,7 +126,9 @@ export const getAllLeadsActived = async (req, res) => {
             }
           ]
         }
-      ]
+      ],
+            order: [['id', 'DESC']] // <-- Sort leads by created_at descending
+
     });
 
     res.status(200).json(leads);

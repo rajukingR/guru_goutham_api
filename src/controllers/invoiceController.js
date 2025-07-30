@@ -188,56 +188,45 @@ export const createInvoice = async (req, res) => {
       const months = parseInt(item.rental_duration_months || 0);
       const days = parseInt(item.rental_duration_days || 0);
 
-      // Calculate pricing
-      let total_price = 0;
-      if (prevQty > 0) {
-        total_price += rentPerMonth * prevQty * months;
-        total_price += dailyRate * prevQty * days;
-      }
-      if (newQty > 0) {
-        const addedDate = item.added_date ? new Date(formatDate(item.added_date)) : startDate;
-        const effectiveDays = Math.ceil((endDate - addedDate) / (1000 * 60 * 60 * 24)) + 1;
-        total_price += dailyRate * newQty * Math.max(0, effectiveDays);
-      }
-      if (returnQty > 0) {
-        const returnedDate = item.returned_date ? new Date(formatDate(item.returned_date)) : endDate;
-        const usedDays = Math.ceil((returnedDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-        total_price += dailyRate * returnQty * Math.min(usedDays, totalInvoiceDays);
-      }
+      // Use unit_price and total_price from the payload
+      const unitPrice = parseFloat(item.unit_price || 0);
+      const totalPrice = parseFloat(item.total_price || 0);
 
-      const cgst = parseFloat((total_price * cgstRate) / 100);
-      const sgst = parseFloat((total_price * sgstRate) / 100);
-      const total_tax = cgst + sgst;
-      const total_amount = total_price + total_tax;
+      const cgstRate = parseFloat(product.cgst || 0);
+      const sgstRate = parseFloat(product.sgst || 0);
 
-      invoiceAmount += total_price;
+      const cgst = parseFloat((totalPrice * cgstRate) / 100);
+      const sgst = parseFloat((totalPrice * sgstRate) / 100);
+      const totalTax = cgst + sgst;
+      const totalAmount = totalPrice + totalTax;
+
+      invoiceAmount += totalPrice;
       totalCGST += cgst;
       totalSGST += sgst;
 
-      // Create invoice item
-      const invoiceItem = await InvoiceItem.create({
+      await InvoiceItem.create({
         invoice_id: invoice.id,
         order_id,
         product_id: item.product_id,
         product_name: item.product_name || product.product_name,
-        previous_quantity: prevQty,
-        quantity: prevQty,
-        unit_price: rentPerMonth.toFixed(2),
-        total_price: total_price.toFixed(2),
+        previous_quantity: parseInt(item.previous_quantity || 0),
+        quantity: parseInt(item.quantity || 0),
+        unit_price: unitPrice.toFixed(2),
+        total_price: totalPrice.toFixed(2),
         cgst: cgst.toFixed(2),
         sgst: sgst.toFixed(2),
         igst: "0.00",
-        total_tax: total_tax.toFixed(2),
-        total_amount: total_amount.toFixed(2),
-        rental_duration_months: months,
-        rental_duration_days: days,
-        new_quantity: newQty,
-        return_quantity: returnQty,
-        device_ids: Array.isArray(item.device_ids) ? JSON.stringify(item.device_ids) : item.device_ids,
-        new_device_ids: Array.isArray(item.new_device_ids) ? JSON.stringify(item.new_device_ids) : item.new_device_ids,
-        returned_device_ids: Array.isArray(item.returned_device_ids) ? JSON.stringify(item.returned_device_ids) : item.returned_device_ids,
-        added_date: newQty ? formatDate(item.added_date) || getCurrentTimestamp() : null,
-        returned_date: returnQty ? formatDate(item.returned_date) || getCurrentTimestamp() : null,
+        total_tax: totalTax.toFixed(2),
+        total_amount: totalAmount.toFixed(2),
+        rental_duration_months: parseInt(item.rental_duration_months || 0),
+        rental_duration_days: parseInt(item.rental_duration_days || 0),
+        new_quantity: parseInt(item.new_quantity || 0),
+        return_quantity: parseInt(item.return_quantity || 0),
+        device_ids: JSON.stringify(item.device_ids || []),
+        new_device_ids: JSON.stringify(item.new_device_ids || []),
+        returned_device_ids: JSON.stringify(item.returned_device_ids || []),
+        added_date: item.added_date || null,
+        returned_date: item.returned_date || null
       });
 
       // Process each device in device_ids
@@ -400,14 +389,14 @@ export const getAllInvoices = async (req, res) => {
   try {
     // Fetch all invoices with related items, sorted by created_at DESC
     const invoices = await Invoice.findAll({
-      include: [
-        {
-          model: InvoiceItem,
-          as: "items",
-          attributes: ["id", "product_id", "returned_date"],
-        },
-      ],
-  order: [["id", "DESC"]], // 👈 sort by id descending
+      include: [{
+        model: InvoiceItem,
+        as: "items",
+        attributes: ["id", "product_id", "returned_date"],
+      }, ],
+      order: [
+        ["id", "DESC"]
+      ], // 👈 sort by id descending
     });
 
 
@@ -957,21 +946,21 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 
 
 
-
 export const getInvoiceById = async (req, res) => {
   try {
-    const {
-      id
-    } = req.params;
+    const { id } = req.params;
 
     const invoice = await Invoice.findByPk(id, {
-      include: [{
+      include: [
+        {
           model: InvoiceItem,
           as: "items",
-          include: [{
-            model: ProductTemplete,
-            as: "productDetails",
-          }, ],
+          include: [
+            {
+              model: ProductTemplete,
+              as: "productDetails",
+            },
+          ],
         },
         {
           model: InvoiceShippingDetail,
@@ -981,9 +970,7 @@ export const getInvoiceById = async (req, res) => {
     });
 
     if (!invoice) {
-      return res.status(404).json({
-        message: "Invoice not found"
-      });
+      return res.status(404).json({ message: "Invoice not found" });
     }
 
     const order = await Order.findByPk(invoice.order_id);
@@ -1016,12 +1003,14 @@ export const getInvoiceById = async (req, res) => {
     // Filter root credit notes
     const creditNotes = await CreditNote.findAll({
       where: {
-        dispatch_order_id: invoice.dispatch_order_id
+        dispatch_order_id: invoice.dispatch_order_id,
       },
-      include: [{
-        model: CreditNoteItem,
-        as: "items"
-      }],
+      include: [
+        {
+          model: CreditNoteItem,
+          as: "items",
+        },
+      ],
     });
 
     const invoiceStart = new Date(invoice.invoice_start_date);
@@ -1032,18 +1021,33 @@ export const getInvoiceById = async (req, res) => {
       .map((note) => note.toJSON())
       .filter((note) => {
         if (!note.returned_date) return false;
+        
+        // If payment mode is Prepaid and same month, don't filter it out
+        if (invoice.payment_mode === "Prepaid") {
+          const returnedDate = new Date(note.returned_date);
+          const returnedMonth = returnedDate.getMonth();
+          const returnedYear = returnedDate.getFullYear();
+          
+          // Check if same month and year
+          if (returnedMonth === invoiceStartMonth && 
+              returnedYear === invoiceStartYear) {
+            return false; // Don't include in filtered notes
+          }
+        }
+        
         const returnedDate = new Date(note.returned_date);
         const returnedMonth = returnedDate.getMonth();
         const returnedYear = returnedDate.getFullYear();
 
-        const isOneMonthBefore =
+        const isSameOrPreviousMonth =
           (invoiceStartMonth === 0 &&
             returnedMonth === 11 &&
-            invoiceStartYear - returnedYear === 1) ||
+            invoiceStartYear - returnedYear === 1) || // Dec -> Jan (year change)
           (returnedYear === invoiceStartYear &&
-            invoiceStartMonth - returnedMonth === 1);
+            (invoiceStartMonth - returnedMonth === 1 || 
+             invoiceStartMonth - returnedMonth === 0)); // Same or previous month
 
-        return isOneMonthBefore;
+        return isSameOrPreviousMonth;
       });
 
     // Fetch additional delivery challans before current invoice.dc_date
@@ -1051,29 +1055,34 @@ export const getInvoiceById = async (req, res) => {
 
     const otherChallans = await DeliveryChallan.findAll({
       where: {
-        [Op.and]: [{
-            customer_code: invoice.customer_id.toString()
+        [Op.and]: [
+          {
+            customer_code: invoice.customer_id.toString(),
           },
           {
             dispatch_order_id: {
-              [Op.ne]: invoice.dispatch_order_id
-            }
+              [Op.ne]: invoice.dispatch_order_id,
+            },
           },
           {
             dc_date: {
-              [Op.lt]: invoiceDcDate
-            }
+              [Op.lt]: invoiceDcDate,
+            },
           },
         ],
       },
-      include: [{
-        model: DeliveryChallanItem,
-        as: "items",
-        include: [{
-          model: ProductTemplete,
-          as: "product",
-        }, ],
-      }, ],
+      include: [
+        {
+          model: DeliveryChallanItem,
+          as: "items",
+          include: [
+            {
+              model: ProductTemplete,
+              as: "product",
+            },
+          ],
+        },
+      ],
     });
 
     const additionalDeliveryChallans = [];
@@ -1083,12 +1092,14 @@ export const getInvoiceById = async (req, res) => {
 
       const challanCreditNotes = await CreditNote.findAll({
         where: {
-          dispatch_order_id: challanDispatchOrderId
+          dispatch_order_id: challanDispatchOrderId,
         },
-        include: [{
-          model: CreditNoteItem,
-          as: "items"
-        }],
+        include: [
+          {
+            model: CreditNoteItem,
+            as: "items",
+          },
+        ],
       });
 
       const filteredNotes = [];
@@ -1096,26 +1107,39 @@ export const getInvoiceById = async (req, res) => {
       for (const note of challanCreditNotes) {
         if (!note.returned_date) continue;
 
+        // Skip if payment mode is Prepaid and same month
+        if (invoice.payment_mode === "Prepaid") {
+          const returnedDate = new Date(note.returned_date);
+          const returnedMonth = returnedDate.getMonth();
+          const returnedYear = returnedDate.getFullYear();
+          
+          if (returnedMonth === invoiceStartMonth && 
+              returnedYear === invoiceStartYear) {
+            continue; // Skip this credit note
+          }
+        }
+
         const returnedDate = new Date(note.returned_date);
         const returnedMonth = returnedDate.getMonth();
         const returnedYear = returnedDate.getFullYear();
 
-        const isOneMonthBefore =
+        const isSameOrPreviousMonth =
           (invoiceStartMonth === 0 &&
             returnedMonth === 11 &&
-            invoiceStartYear - returnedYear === 1) ||
+            invoiceStartYear - returnedYear === 1) || // Dec -> Jan (year change)
           (returnedYear === invoiceStartYear &&
-            invoiceStartMonth - returnedMonth === 1);
+            (invoiceStartMonth - returnedMonth === 1 || 
+             invoiceStartMonth - returnedMonth === 0)); // Same or previous month
 
-        if (!isOneMonthBefore) continue;
+        if (!isSameOrPreviousMonth) continue;
 
         const noteJSON = note.toJSON();
 
-        // 🆕 Inject productDetails into each credit note item
+        // Inject productDetails into each credit note item
         for (const item of noteJSON.items) {
           const product = await ProductTemplete.findOne({
             where: {
-              id: item.product_id
+              id: item.product_id,
             },
           });
           item.productDetails = product?.toJSON() || null;
@@ -1127,7 +1151,7 @@ export const getInvoiceById = async (req, res) => {
       const challanJSON = challan.toJSON();
       challanJSON.credit_notes = filteredNotes;
 
-      // 🆕 Update device_ids and quantity in challan items by subtracting returned ones
+      // Update device_ids and quantity in challan items by subtracting returned ones
       challanJSON.items = challanJSON.items.map((item) => {
         let returnedDeviceIds = [];
 
@@ -1153,7 +1177,6 @@ export const getInvoiceById = async (req, res) => {
 
       additionalDeliveryChallans.push(challanJSON);
     }
-
 
     const invoiceJSON = invoice.toJSON();
     invoiceJSON.items = updatedItems;
@@ -1653,82 +1676,48 @@ export const updateInvoice = async (req, res) => {
       const months = parseInt(item.rental_duration_months || 0);
       const days = parseInt(item.rental_duration_days || 0);
 
-      let total_price = 0;
+      const unitPrice = parseFloat(item.unit_price || 0);
+      const totalPrice = parseFloat(item.total_price || 0);
 
-      // 1. Previous quantity calculation (full period)
-      if (prevQty > 0) {
-        total_price += rentPerMonth * prevQty * months;
-        total_price += dailyRate * prevQty * days;
-      }
+      // Calculate taxes from totalPrice
+      const cgst = parseFloat((totalPrice * cgstRate) / 100);
+      const sgst = parseFloat((totalPrice * sgstRate) / 100);
+      const totalTax = cgst + sgst;
+      const totalAmount = totalPrice + totalTax;
 
-      // 2. New quantity calculation (prorated from added date)
-      if (newQty > 0) {
-        const addedDate = item.added_date ?
-          new Date(formatDate(item.added_date)) :
-          startDate;
-
-        const effectiveDays = Math.ceil(
-          (endDate - addedDate) / (1000 * 60 * 60 * 24)) + 1;
-
-        total_price += dailyRate * newQty * Math.max(0, effectiveDays);
-      }
-
-      // 3. Return quantity calculation (prorated to returned date)
-      if (returnQty > 0) {
-        const returnedDate = item.returned_date ?
-          new Date(formatDate(item.returned_date)) :
-          endDate;
-
-        const usedDays = Math.ceil(
-          (returnedDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-
-        total_price += dailyRate * returnQty * Math.min(usedDays, totalInvoiceDays);
-      }
-
-      // Calculate taxes
-      const cgst = parseFloat((total_price * cgstRate) / 100);
-      const sgst = parseFloat((total_price * sgstRate) / 100);
-      const total_tax = cgst + sgst;
-      const total_amount = total_price + total_tax;
-
-      // Update invoice totals
-      invoiceAmount += total_price;
+      // Update totals
+      invoiceAmount += totalPrice;
       totalCGST += cgst;
       totalSGST += sgst;
-
       // Create invoice item record
       await InvoiceItem.create({
         invoice_id: invoice.id,
-        order_id: item.order_id || null, // ✅ Include per-item order ID
+        order_id: item.order_id || null,
 
         product_id: item.product_id,
         product_name: item.product_name || product.product_name,
-        previous_quantity: prevQty,
-        quantity: prevQty,
-        unit_price: rentPerMonth.toFixed(2),
-        total_price: total_price.toFixed(2),
+        previous_quantity: parseInt(item.previous_quantity || 0),
+        quantity: parseInt(item.quantity || 0),
+        unit_price: unitPrice.toFixed(2),
+        total_price: totalPrice.toFixed(2),
         cgst: cgst.toFixed(2),
         sgst: sgst.toFixed(2),
         igst: "0.00",
-        total_tax: total_tax.toFixed(2),
-        total_amount: total_amount.toFixed(2),
-        rental_duration_months: months,
-        rental_duration_days: days,
-        new_quantity: newQty,
-        return_quantity: returnQty,
+        total_tax: totalTax.toFixed(2),
+        total_amount: totalAmount.toFixed(2),
+        rental_duration_months: parseInt(item.rental_duration_months || 0),
+        rental_duration_days: parseInt(item.rental_duration_days || 0),
+        new_quantity: parseInt(item.new_quantity || 0),
+        return_quantity: parseInt(item.return_quantity || 0),
         device_ids: item.device_ids ? JSON.stringify(item.device_ids) : null,
-
         new_device_ids: item.new_device_ids || [],
         returned_device_ids: item.returned_device_ids || [],
         added_date: item.new_quantity && Number(item.new_quantity) !== 0 ?
-          item.added_date ?
-          formatDate(item.added_date) :
-          getCurrentTimestamp() : null,
+          item.added_date ? formatDate(item.added_date) : getCurrentTimestamp() : null,
         returned_date: item.return_quantity && Number(item.return_quantity) !== 0 ?
-          item.returned_date ?
-          formatDate(item.returned_date) :
-          getCurrentTimestamp() : null,
+          item.returned_date ? formatDate(item.returned_date) : getCurrentTimestamp() : null,
       });
+
     }
 
     // Calculate final invoice amounts

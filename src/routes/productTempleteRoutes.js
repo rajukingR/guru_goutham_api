@@ -2,6 +2,8 @@ import express from 'express';
 import {
   createProduct,
   getAllProducts,
+  getProductWithAssets,
+  getAllAssembledDesktops,
   getProductById,
   updateProduct,
   deleteProduct,
@@ -14,6 +16,8 @@ const router = express.Router();
 
 router.post('/create', upload.single("product_image"), createProduct);
 router.get('/', getAllProducts);
+router.get('/products-with-assets', getProductWithAssets);
+router.get('/assembled-desktops', getAllAssembledDesktops);
 router.get('/:id', getProductById);
 router.put('/:id', upload.single('product_image'), updateProduct);
 router.delete('/:id', deleteProduct);

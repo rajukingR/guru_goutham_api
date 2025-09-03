@@ -21,6 +21,18 @@ export default (sequelize, DataTypes) => {
     total_price: {
       type: DataTypes.DECIMAL(10, 2)
     },
+    offer_purchase_price: {
+      type: DataTypes.DECIMAL(10, 2)
+    },
+    purchase_price: {
+      type: DataTypes.DECIMAL(10, 2)
+    },
+    rent_price_per_month: {
+      type: DataTypes.DECIMAL(10, 2)
+    },
+    offer_rent_price_per_month: {
+      type: DataTypes.DECIMAL(10, 2)
+    },
     device_ids: {
       type: DataTypes.JSON
     },
@@ -33,12 +45,12 @@ export default (sequelize, DataTypes) => {
     timestamps: false
   });
 
-    DispatchOrderItem.associate = (models) => {
+  DispatchOrderItem.associate = (models) => {
     DispatchOrderItem.belongsTo(models.DispatchOrder, {
       foreignKey: 'dispatch_order_id',
       as: 'dispatchOrder'
     });
   };
-  
+
   return DispatchOrderItem;
 };

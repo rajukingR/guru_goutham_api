@@ -12,6 +12,16 @@ export default (sequelize, DataTypes) => {
         city: DataTypes.STRING,
         state: DataTypes.STRING,
         country: DataTypes.STRING,
+
+
+        // Shipping Address
+        shipping_street: DataTypes.STRING,
+        shipping_landmark: DataTypes.STRING,
+        shipping_pincode: DataTypes.STRING,
+        shipping_city: DataTypes.STRING,
+        shipping_state: DataTypes.STRING,
+        shipping_country: DataTypes.STRING,
+
     }, {
         tableName: 'order_addresses',
         timestamps: false,
@@ -19,8 +29,10 @@ export default (sequelize, DataTypes) => {
 
 
     OrderAddress.associate = models => {
-    OrderAddress.belongsTo(models.Order, { foreignKey: 'order_id' });
-  };
-  
+        OrderAddress.belongsTo(models.Order, {
+            foreignKey: 'order_id'
+        });
+    };
+
     return OrderAddress;
 };

@@ -12,17 +12,83 @@ const {
   DeliveryChallan,
   DeliveryChallanItem,
   Contact,
-DispatchOrder,
-   Invoice,
-   DispatchOrderItem,
+  DispatchOrder,
+  Invoice,
+  DispatchOrderItem,
   InvoiceItem,
   CreditNoteItem,
+  AssembledAsset,
+  AssembledComponent,
 } = db;
 
 
+///UPDATED 05-08-25
 
+
+
+// const validateStockForApprovedOrder = async (items = []) => {
+//   const approvedReceipts = await GoodsReceipt.findAll({
+//     where: {
+//       goods_receipt_status: 'Approved'
+//     },
+//     attributes: ['id'],
+//   });
+
+//   const approvedReceiptIds = approvedReceipts.map(r => r.id);
+
+//   if (!approvedReceiptIds.length) {
+//     return {
+//       error: true,
+//       errors: [{
+//         message: "No approved goods receipts available"
+//       }]
+//     };
+//   }
+
+//   const receiptItems = await GoodsReceiptItem.findAll({
+//     where: {
+//       goods_receipt_id: approvedReceiptIds
+//     },
+//     attributes: ['product_id', 'quantity'],
+//   });
+
+//   const stockMap = {};
+//   receiptItems.forEach(item => {
+//     stockMap[item.product_id] = (stockMap[item.product_id] || 0) + item.quantity;
+//   });
+
+//   const errors = [];
+
+//   for (const item of items) {
+//     const availableQty = stockMap[item.product_id] || 0;
+//     const requestedQty = item.requested_quantity || 0;
+
+//     if (requestedQty > availableQty) {
+//       const product = await Product.findByPk(item.product_id);
+//       const productName = product?.name || 'Unknown';
+
+//       errors.push({
+//         product_id: item.product_id,
+//         product_name: productName,
+//         available_quantity: availableQty,
+//         requested_quantity: requestedQty,
+//         message: `Insufficient stock for ${productName}. Available QTY: ${availableQty}, Requested QTY: ${requestedQty}.`
+//       });
+//     }
+//   }
+
+
+//   return errors.length ? {
+//     error: true,
+//     errors
+//   } : {
+//     error: false
+//   };
+// };
 
 // ✅ Helper: Validate stock from approved goods receipts
+// ✅ Helper: Validate stock from approved goods receipts
+
 const validateStockForApprovedOrder = async (items = []) => {
   const approvedReceipts = await GoodsReceipt.findAll({
     where: {
@@ -57,31 +123,46 @@ const validateStockForApprovedOrder = async (items = []) => {
   const errors = [];
 
   for (const item of items) {
-    const availableQty = stockMap[item.product_id] || 0;
+    let finalProductIdToCheck = item.product_id;
+
+    // ✅ Fetch product details
+    const productTemplete = await ProductTemplete.findOne({
+      where: {
+        id: item.product_id
+      },
+      attributes: ['id', 'product_category']
+    });
+
+    // ✅ Only map to 1 if product_category is "Assembled PC"
+    if (productTemplete?.product_category?.toUpperCase() === "ASSEMBLED PC") {
+      finalProductIdToCheck = 1;
+    }
+
+    const availableQty = stockMap[finalProductIdToCheck] || 0;
     const requestedQty = item.requested_quantity || 0;
 
     if (requestedQty > availableQty) {
-      const product = await Product.findByPk(item.product_id);
-      const productName = product?.name || 'Unknown';
-
       errors.push({
         product_id: item.product_id,
-        product_name: productName,
+        product_name: item.product_name || 'Unknown',
         available_quantity: availableQty,
         requested_quantity: requestedQty,
-        message: `Insufficient stock for ${productName}. Available QTY: ${availableQty}, Requested QTY: ${requestedQty}.`
+        message: `Insufficient stock for ${item.product_name || 'Unknown'}. Available QTY: ${availableQty}, Requested QTY: ${requestedQty}.`
       });
     }
   }
 
-
-  return errors.length ? {
-    error: true,
-    errors
-  } : {
-    error: false
-  };
+  return errors.length ?
+    {
+      error: true,
+      errors
+    } :
+    {
+      error: false
+    };
 };
+
+
 
 // ✅ Create Order
 export const createOrder = async (req, res) => {
@@ -207,11 +288,12 @@ export const updateOrder = async (req, res) => {
       rental_end_date,
       order_date,
       contact_status,
-      personalDetails, // ✅ use camelCase key as per frontend
+      personal_details, // 🟡 Follows createOrder camelCase
       address,
       items,
     } = req.body;
 
+    // 🔍 Find existing order
     const order = await Order.findByPk(id);
     if (!order) {
       return res.status(404).json({
@@ -219,18 +301,18 @@ export const updateOrder = async (req, res) => {
       });
     }
 
-    // 👉 Validate stock if order is being Approved
+    // 🔒 Stock validation if status is changing to "Approved"
     if (order_status === 'Approved') {
       const validation = await validateStockForApprovedOrder(items);
       if (validation.error) {
         return res.status(400).json({
           message: 'Some products have insufficient stock',
-          errors: validation.errors,
+          errors: validation.errors
         });
       }
     }
 
-    // 👉 Update order fields
+    // 📝 Update order core fields
     await order.update({
       order_title,
       transaction_type,
@@ -247,46 +329,46 @@ export const updateOrder = async (req, res) => {
       rental_end_date,
       order_date,
       contact_status,
-      updated_at: new Date(),
+      updated_at: new Date()
     });
 
-    // 👉 Update personal details (including GST number)
-    if (personalDetails) {
-      const personalDetail = await OrderPersonalDetail.findOne({
+    // 📦 Update or create personal details
+    if (personal_details) {
+      const existingPersonal = await OrderPersonalDetail.findOne({
         where: {
           order_id: id
-        },
+        }
       });
 
-      if (personalDetail) {
-        await personalDetail.update(personalDetails);
+      if (existingPersonal) {
+        await existingPersonal.update(personal_details);
       } else {
         await OrderPersonalDetail.create({
-          ...personalDetails,
-          order_id: id,
+          ...personal_details,
+          order_id: id
         });
       }
     }
 
-    // 👉 Update address
+    // 🏠 Update or create address
     if (address) {
-      const orderAddress = await OrderAddress.findOne({
+      const existingAddress = await OrderAddress.findOne({
         where: {
           order_id: id
-        },
+        }
       });
 
-      if (orderAddress) {
-        await orderAddress.update(address);
+      if (existingAddress) {
+        await existingAddress.update(address);
       } else {
         await OrderAddress.create({
           ...address,
-          order_id: id,
+          order_id: id
         });
       }
     }
 
-    // 👉 Replace order items
+    // 🧾 Replace order items
     if (items && Array.isArray(items)) {
       await OrderItem.destroy({
         where: {
@@ -294,35 +376,36 @@ export const updateOrder = async (req, res) => {
         }
       });
 
-      const formattedItems = items.map((item) => ({
+      const formattedItems = items.map(item => ({
         ...item,
-        order_id: id,
+        order_id: id
       }));
 
       await OrderItem.bulkCreate(formattedItems);
     }
 
-    // ✅ Respond
+    // ✅ Respond success
     return res.status(200).json({
       message: 'Order updated successfully',
-      order,
+      order
     });
+
   } catch (error) {
     console.error('Error updating order:', error);
     return res.status(500).json({
       message: 'Error updating order',
-      error: error.message || 'Internal Server Error',
+      error: error.message || 'Internal Server Error'
     });
   }
 };
+
 
 
 // Get All Orders
 export const getAllOrders = async (req, res) => {
   try {
     const orders = await Order.findAll({
-      include: [
-        {
+      include: [{
           model: OrderItem,
           as: 'items'
         },
@@ -335,20 +418,27 @@ export const getAllOrders = async (req, res) => {
           as: 'personalDetails'
         }
       ],
-      order: [['created_at', 'DESC']] // <-- Add this line to sort orders in descending order
+      order: [
+        ['created_at', 'DESC']
+      ] // <-- Add this line to sort orders in descending order
     });
 
     const formattedOrders = await Promise.all(
       orders.map(async (order) => {
         const orderJSON = order.toJSON();
-        const { transaction_type, rental_duration } = orderJSON;
+        const {
+          transaction_type,
+          rental_duration
+        } = orderJSON;
 
         let totalValue = 0;
 
         const itemsWithValue = await Promise.all(
           orderJSON.items.map(async (item) => {
             const product = await ProductTemplete.findOne({
-              where: { id: item.product_id }
+              where: {
+                id: item.product_id
+              }
             });
 
             let itemTotal = 0;
@@ -405,6 +495,122 @@ export const getAllOrders = async (req, res) => {
     });
   }
 };
+
+
+
+//UPDATED 05-08-25
+
+
+
+// export const getAllOrdersApproved = async (req, res) => {
+//   try {
+//     const orders = await Order.findAll({
+//       where: { order_status: 'Approved' },
+//       include: [
+//         { model: OrderItem, as: 'items' },
+//         { model: OrderAddress, as: 'address' },
+//         { model: OrderPersonalDetail, as: 'personalDetails' },
+//         { model: Contact, as: 'customer' }
+//       ],
+//       order: [['id', 'DESC']]
+//     });
+
+//     // Utility function to safely parse JSON asset ID fields
+//     const parseAssetIds = (input) => {
+//       if (Array.isArray(input)) return input;
+//       if (!input) return [];
+//       try {
+//         const parsed = typeof input === 'string' ? JSON.parse(input) : input;
+//         return Array.isArray(parsed) ? parsed : [];
+//       } catch {
+//         return [];
+//       }
+//     };
+
+//     const formattedOrders = await Promise.all(
+//       orders.map(async (order) => {
+//         const orderJSON = order.toJSON();
+//         let totalValue = 0;
+
+//         const itemsWithValue = await Promise.all(
+//           orderJSON.items.map(async (item) => {
+//             // 1. Get product details
+//             const product = await ProductTemplete.findByPk(item.product_id);
+//             let itemTotal = 0;
+
+//             if (product) {
+//               if (orderJSON.transaction_type === 'Rent') {
+//                 // Add your rent calculation logic here if needed
+//               } else if (orderJSON.transaction_type === 'Buy') {
+//                 itemTotal = (item.requested_quantity || 0) * product.purchase_price;
+//               }
+//             }
+//             totalValue += itemTotal;
+
+//             // 2. Get all GRN assets for the product
+//             const grnItems = await GoodsReceiptItem.findAll({
+//               where: { product_id: item.product_id },
+//               attributes: ['asset_ids'],
+//               raw: true
+//             });
+//             const allGrnAssets = grnItems.flatMap(grn => parseAssetIds(grn.asset_ids));
+
+//             // 3. Get all dispatched assets for this product (across all orders)
+//             const allDispatchItems = await DispatchOrderItem.findAll({
+//               where: { product_id: item.product_id },
+//               attributes: ['device_ids'],
+//               raw: true
+//             });
+//             const allDispatchedAssets = allDispatchItems.flatMap(d => parseAssetIds(d.device_ids));
+//             const dispatchedSet = new Set(allDispatchedAssets);
+
+//             // 4. Get all returned assets from Credit Notes
+//             const creditNoteItems = await CreditNoteItem.findAll({
+//               where: { product_id: item.product_id },
+//               attributes: ['device_ids'],
+//               raw: true
+//             });
+//             const returnedAssets = creditNoteItems.flatMap(cn => parseAssetIds(cn.device_ids));
+//             const returnedSet = new Set(returnedAssets);
+
+//             // 5. Calculate available asset IDs: (GRN - Dispatched) + Returned
+//             const availableAssetIds = allGrnAssets.filter(id =>
+//               !dispatchedSet.has(id) || returnedSet.has(id)
+//             );
+
+//             return {
+//               ...item,
+//               item_total_value: itemTotal,
+//               available_asset_ids: availableAssetIds,
+//               total_grn_assets: allGrnAssets.length,
+//               dispatched_count: dispatchedSet.size,
+//               returned_count: returnedSet.size
+//             };
+//           })
+//         );
+
+//         return {
+//           ...orderJSON,
+//           total_order_value: totalValue,
+//           personal_details: orderJSON.personalDetails,
+//           address: order.address,
+//           items: itemsWithValue
+//         };
+//       })
+//     );
+
+//     res.status(200).json(formattedOrders);
+//   } catch (error) {
+//     console.error('Error in getAllOrdersApproved:', error);
+//     res.status(500).json({
+//       message: 'Error fetching approved orders',
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
 
 
 export const getAllOrdersApproved = async (req, res) => {
@@ -513,10 +719,6 @@ export const getAllOrdersApproved = async (req, res) => {
     });
   }
 };
-
-
-
-
 
 
 

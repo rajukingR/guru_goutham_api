@@ -19,23 +19,19 @@ const CreditNoteItem = db.CreditNoteItem;
 
 const DeliveryChallan = db.DeliveryChallan;
 const DeliveryChallanItem = db.DeliveryChallanItem;
-
+const Peripheral = db.Peripheral;
+const PeripheralItem = db.PeripheralItem;
 
 export const createInvoice = async (req, res) => {
   try {
     if (!req.body.items || !req.body.items.length) {
-      return res.status(400).json({
-        error: "At least one invoice item is required"
-      });
+      return res.status(400).json({ error: "At least one invoice item is required" });
     }
 
-    // Destructure request body
     const {
       order_id,
       invoice_number,
       invoice_title,
-      dc_id,
-      dc_date,
       dispatch_order_number,
       dispatch_order_id,
       invoice_start_date,
@@ -71,17 +67,25 @@ export const createInvoice = async (req, res) => {
       items
     } = req.body;
 
-    // Helper functions
     const normalizeInt = (val) => val === '' ? null : val;
     const getCurrentTimestamp = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
-
     const formatDate = (input) => {
       if (!input) return null;
       const date = new Date(input);
       return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
     };
 
-    // Format dates
+    // Fetch DeliveryChallan using dispatch_order_id
+    let dc_date = null;
+    let dc_id = null;
+    if (dispatch_order_id) {
+      const deliveryChallan = await DeliveryChallan.findOne({ where: { dispatch_order_id } });
+      if (deliveryChallan) {
+        dc_date = formatDate(deliveryChallan.dc_date);
+        dc_id = deliveryChallan.id;
+      }
+    }
+
     const formattedInvoiceStartDate = formatDate(invoice_start_date);
     const formattedInvoiceEndDate = formatDate(invoice_end_date);
     const formattedInvoiceDate = formatDate(invoice_date) || getCurrentTimestamp();
@@ -95,35 +99,17 @@ export const createInvoice = async (req, res) => {
     const formattedPurchaseOrderDate = formatDate(purchase_order_date);
     const formattedApprovalDate = formatDate(approval_date);
 
-    // Validate dates
     if (!formattedInvoiceStartDate || !formattedInvoiceEndDate) {
-      return res.status(400).json({
-        error: "Invalid invoice date range provided"
-      });
+      return res.status(400).json({ error: "Invalid invoice date range provided" });
     }
 
-    const startDate = new Date(formattedInvoiceStartDate);
-    const endDate = new Date(formattedInvoiceEndDate);
-    const totalInvoiceDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-    if (totalInvoiceDays <= 0) {
-      return res.status(400).json({
-        error: "Invoice end date must be after start date"
-      });
-    }
-
-    // Get tax rates
-    const tax = await TaxType.findOne({
-      where: {
-        tax_type_name: {
-          [Op.like]: '%GST%'
-        }
-      },
-    });
+    // Tax
+    const tax = await TaxType.findOne({ where: { tax_type_name: { [Op.like]: '%GST%' } } });
     const taxRate = tax ? tax.percentage : 18;
     const cgstRate = taxRate / 2;
     const sgstRate = taxRate / 2;
 
-    // Create invoice
+    // Create Invoice
     const invoice = await Invoice.create({
       order_id: normalizeInt(order_id),
       invoice_number,
@@ -167,10 +153,10 @@ export const createInvoice = async (req, res) => {
       invoice_consulting_by,
       industry,
       remarks,
-      created_at: getCurrentTimestamp(),
+      created_at: getCurrentTimestamp()
     });
 
-    // Process invoice items
+    // Process Invoice Items
     let invoiceAmount = 0;
     let totalCGST = 0;
     let totalSGST = 0;
@@ -179,24 +165,10 @@ export const createInvoice = async (req, res) => {
       const product = await ProductTemplete.findByPk(item.product_id);
       if (!product) continue;
 
-      const rentPerMonth = parseFloat(product.rent_price_per_month || 0);
-      const dailyRate = rentPerMonth / 30;
-
-      const prevQty = parseInt(item.previous_quantity || 0);
-      const newQty = parseInt(item.new_quantity || 0);
-      const returnQty = parseInt(item.return_quantity || 0);
-      const months = parseInt(item.rental_duration_months || 0);
-      const days = parseInt(item.rental_duration_days || 0);
-
-      // Use unit_price and total_price from the payload
       const unitPrice = parseFloat(item.unit_price || 0);
       const totalPrice = parseFloat(item.total_price || 0);
-
-      const cgstRate = parseFloat(product.cgst || 0);
-      const sgstRate = parseFloat(product.sgst || 0);
-
-      const cgst = parseFloat((totalPrice * cgstRate) / 100);
-      const sgst = parseFloat((totalPrice * sgstRate) / 100);
+      const cgst = parseFloat((totalPrice * (parseFloat(product.cgst || 0) / 100)));
+      const sgst = parseFloat((totalPrice * (parseFloat(product.sgst || 0) / 100)));
       const totalTax = cgst + sgst;
       const totalAmount = totalPrice + totalTax;
 
@@ -229,63 +201,22 @@ export const createInvoice = async (req, res) => {
         returned_date: item.returned_date || null
       });
 
-      // Process each device in device_ids
+      // Update or Create Assets
       for (const deviceId of item.device_ids || []) {
-        const existingAsset = await AssetId.findOne({
-          where: {
-            asset_id: deviceId
-          }
-        });
-
+        const existingAsset = await AssetId.findOne({ where: { asset_id: deviceId } });
         if (existingAsset) {
-          // Update existing asset with latest product specs
           await existingAsset.update({
             invoice_id: invoice.id,
             product_id: product.id,
             product_name: product.product_name,
-            ram: product.ram,
-            storage: product.storage,
-            processor: product.processor,
-            os: product.os,
-            graphics: product.graphics,
-            disk_type: product.disk_type,
-            brand: product.brand,
-            model: product.model,
-            grade: product.grade,
-            screen_size: product.screen_size,
-            resolution: product.resolution,
-            brightness: product.brightness,
-            power_consumption: product.power_consumption,
-            display_device: product.display_device,
-            audio_output: product.audio_output,
-            weight: product.weight,
-            color: product.color,
             updated_at: new Date()
           });
         } else {
-          // Create new asset record with product specs
           await AssetId.create({
             invoice_id: invoice.id,
             product_id: product.id,
             asset_id: deviceId,
             product_name: product.product_name,
-            ram: product.ram,
-            storage: product.storage,
-            processor: product.processor,
-            os: product.os,
-            graphics: product.graphics,
-            disk_type: product.disk_type,
-            brand: product.brand,
-            model: product.model,
-            grade: product.grade,
-            screen_size: product.screen_size,
-            resolution: product.resolution,
-            brightness: product.brightness,
-            power_consumption: product.power_consumption,
-            display_device: product.display_device,
-            audio_output: product.audio_output,
-            weight: product.weight,
-            color: product.color,
             created_at: new Date(),
             updated_at: new Date()
           });
@@ -293,7 +224,7 @@ export const createInvoice = async (req, res) => {
       }
     }
 
-    // Update invoice totals
+    // Update Invoice totals
     const grandTotal = invoiceAmount + totalCGST + totalSGST;
     await invoice.update({
       amount: parseFloat(invoiceAmount.toFixed(2)),
@@ -301,10 +232,10 @@ export const createInvoice = async (req, res) => {
       sgst: parseFloat(totalSGST.toFixed(2)),
       igst: 0,
       total_tax: parseFloat((totalCGST + totalSGST).toFixed(2)),
-      total_amount: parseFloat(grandTotal.toFixed(2)),
+      total_amount: parseFloat(grandTotal.toFixed(2))
     });
 
-    // Add shipping details if provided
+    // Shipping Details
     if (shippingDetails) {
       await InvoiceShippingDetail.create({
         invoice_id: invoice.id,
@@ -316,7 +247,7 @@ export const createInvoice = async (req, res) => {
         landmark: shippingDetails.landmark,
         pincode: shippingDetails.pincode,
         phone_number: shippingDetails.phone_number || phone_number,
-        email: shippingDetails.email || email,
+        email: shippingDetails.email || email
       });
     }
 
@@ -334,10 +265,11 @@ export const createInvoice = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Failed to create invoice",
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
-};;
+};
+
 
 
 
@@ -822,60 +754,496 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 
 
 
-///22-07-25
+///11-00-25
+
+
+
+
 
 // export const getInvoiceById = async (req, res) => {
 //   try {
 //     const { id } = req.params;
 
-//     // 1. Fetch invoice with items and shipping details
+//     // Helper function to calculate month difference (date2 - date1)
+//     const monthDiff = (date1, date2) => {
+//       return (date2.getFullYear() - date1.getFullYear()) * 12 + 
+//              (date2.getMonth() - date1.getMonth());
+//     };
+
+//     // Helper function to safely parse JSON arrays and prevent circular references
+//     const parseJSONSafe = (input) => {
+//       try {
+//         if (typeof input === 'string') return JSON.parse(input);
+//         if (Array.isArray(input)) return [...input];
+//         return [];
+//       } catch {
+//         return [];
+//       }
+//     };
+
+//     // Helper to safely convert model instances to plain objects
+//     const toPlainObject = (modelInstance) => {
+//       if (!modelInstance) return null;
+//       const plainObject = modelInstance.get ? modelInstance.get({ plain: true }) : modelInstance;
+//       return JSON.parse(JSON.stringify(plainObject)); // Break circular references
+//     };
+
+//     // 1. Fetch the invoice with related data
 //     const invoice = await Invoice.findByPk(id, {
 //       include: [
 //         {
 //           model: InvoiceItem,
 //           as: 'items',
-//           include: [
-//             {
-//               model: ProductTemplete,
-//               as: 'productDetails',
-//             },
-//           ],
+//           include: [{ 
+//             model: ProductTemplete, 
+//             as: 'productDetails',
+//             attributes: { exclude: ['parent'] } // Avoid circular reference
+//           }]
 //         },
-//         {
-//           model: InvoiceShippingDetail,
-//           as: 'shippingDetail',
-//         },
-//       ],
+//         { 
+//           model: InvoiceShippingDetail, 
+//           as: 'shippingDetail' 
+//         }
+//       ]
 //     });
 
 //     if (!invoice) {
-//       return res.status(404).json({
-//         message: 'Invoice not found',
-//       });
+//       return res.status(404).json({ message: 'Invoice not found' });
 //     }
 
-//     // 2. Fetch related order details
-//     const order = await Order.findByPk(invoice.order_id);
+//     // Convert invoice to plain object early to prevent circular references
+//     const invoicePlain = toPlainObject(invoice);
+
+//     // 2. Fetch related order information
+//     const order = await Order.findByPk(invoicePlain.order_id);
 //     const order_date = order?.order_date || null;
 //     const order_table_id = order?.order_id || null;
 
-//     // 3. Safe JSON parsing
+//     let filteredCreditNotes = [];
+//     let additionalDeliveryChallans = [];
+
+//     // Only process credit notes and additional challans if not a Buy transaction
+//     if (invoicePlain.transaction_type !== 'Buy') {
+//       // 3. Get all credit notes for this invoice
+//       const allCreditNotes = await CreditNote.findAll({
+//         where: { dispatch_order_id: invoicePlain.dispatch_order_id },
+//         include: [{ 
+//           model: CreditNoteItem, 
+//           as: 'items',
+//           attributes: { exclude: ['parent'] } // Avoid circular reference
+//         }]
+//       });
+
+//       // Process credit notes based on payment mode
+//       const [displayCreditNotes, processOnlyCreditNotes] = allCreditNotes.reduce(
+//         ([display, process], note) => {
+//           const noteData = toPlainObject(note);
+//           if (!noteData.returned_date) return [display, process];
+
+//           const returnedDate = new Date(noteData.returned_date);
+//           const invoiceStartDate = new Date(invoicePlain.invoice_start_date);
+//           const dcDate = new Date(invoicePlain.dc_date);
+
+//           const diffDC = monthDiff(dcDate, returnedDate);
+//           const diffInvoice = monthDiff(invoiceStartDate, returnedDate);
+
+//           // SPECIFIC CONDITIONS FOR PREPAID CREDIT NOTES
+//           if (invoicePlain.payment_mode === 'Prepaid') {
+//             // Display only if BOTH conditions are met:
+//             // 1. Returned date is in same month as DC date (diffDC === 0)
+//             // 2. Returned date is exactly 1 month BEFORE invoice start date (diffInvoice === -1)
+//             if (diffDC === 0 && diffInvoice === -1) {
+//               return [[...display, noteData], process];
+//             }
+//             // Special case: Process but don't display credit notes with returned dates:
+//             // - After DC date
+//             // - Before invoice start date
+//             // - Not meeting the display conditions above
+//             if (returnedDate > dcDate && returnedDate < invoiceStartDate) {
+//               return [display, [...process, noteData]];
+//             }
+//             return [display, process];
+//           } 
+//           // Postpaid logic - show credit notes from same month as invoice start
+//           else if (invoicePlain.payment_mode === 'Postpaid') {
+//             if (diffInvoice === 0) {
+//               return [[...display, noteData], process];
+//             }
+//             return [display, process];
+//           }
+//           return [display, process];
+//         },
+//         [[], []]
+//       );
+
+//       filteredCreditNotes = displayCreditNotes;
+
+//       // 4. Update invoice items by subtracting returned devices
+//       invoicePlain.items = invoicePlain.items.map((item) => {
+//         const device_ids = parseJSONSafe(item.device_ids);
+//         const returned_device_ids = parseJSONSafe(item.returned_device_ids);
+//         const returnedFromCreditNotes = [];
+
+//         // Combine displayed and process-only notes for device calculation
+//         [...displayCreditNotes, ...processOnlyCreditNotes].forEach((note) => {
+//           note.items.forEach((ri) => {
+//             if (ri.product_id === item.product_id) {
+//               returnedFromCreditNotes.push(...parseJSONSafe(ri.device_ids));
+//             }
+//           });
+//         });
+
+//         const remaining_device_ids = device_ids.filter(
+//           (id) => !returned_device_ids.includes(id) && 
+//                  !returnedFromCreditNotes.includes(id)
+//         );
+
+//         return {
+//           ...item,
+//           device_ids,
+//           returned_device_ids,
+//           remaining_device_ids: remaining_device_ids.length ? remaining_device_ids : device_ids
+//         };
+//       });
+
+//       // 5. Get additional delivery challans for the customer
+//       const invoiceDcDate = new Date(invoicePlain.dc_date);
+//       const otherChallans = await DeliveryChallan.findAll({
+//         where: {
+//           [Op.and]: [
+//             { customer_code: invoicePlain.customer_id.toString() },
+//             { dispatch_order_id: { [Op.ne]: invoicePlain.dispatch_order_id } },
+//             { dc_date: { [Op.lt]: invoiceDcDate } }
+//           ]
+//         },
+//         include: [{
+//           model: DeliveryChallanItem,
+//           as: 'items',
+//           include: [{ 
+//             model: ProductTemplete, 
+//             as: 'product',
+//             attributes: { exclude: ['parent'] } // Avoid circular reference
+//           }]
+//         }]
+//       });
+
+//       // 6. Process additional challans with the same display conditions
+//       for (const challan of otherChallans) {
+//         const challanPlain = toPlainObject(challan);
+//         const challanCreditNotes = await CreditNote.findAll({
+//           where: { dispatch_order_id: challanPlain.dispatch_order_id },
+//           include: [{ 
+//             model: CreditNoteItem, 
+//             as: 'items',
+//             attributes: { exclude: ['parent'] }
+//           }]
+//         });
+
+//         const [displayChallanNotes, processChallanNotes] = challanCreditNotes.reduce(
+//           ([display, process], note) => {
+//             const noteData = toPlainObject(note);
+//             if (!noteData.returned_date) return [display, process];
+
+//             const returnedDate = new Date(noteData.returned_date);
+//             const invoiceStartDate = new Date(invoicePlain.invoice_start_date);
+//             const dcDate = new Date(challanPlain.dc_date);
+
+//             const diffDC = monthDiff(dcDate, returnedDate);
+//             const diffInvoice = monthDiff(invoiceStartDate, returnedDate);
+
+//             // Apply the same Prepaid conditions to additional challans
+//             if (invoicePlain.payment_mode === 'Prepaid') {
+//               if (diffDC === 0 && diffInvoice === -1) {
+//                 return [[...display, noteData], process];
+//               }
+//               // Special case: Process but don't display
+//               if (returnedDate > dcDate && returnedDate < invoiceStartDate) {
+//                 return [display, [...process, noteData]];
+//               }
+//             } else if (invoicePlain.payment_mode === 'Postpaid') {
+//               if (diffInvoice === 0) {
+//                 return [[...display, noteData], process];
+//               }
+//             }
+//             return [display, process];
+//           },
+//           [[], []]
+//         );
+
+//         challanPlain.credit_notes = displayChallanNotes;
+
+//         // Update items with returned devices (including processed-but-not-displayed notes)
+//         challanPlain.items = challanPlain.items.map((item) => {
+//           const originalDeviceIds = parseJSONSafe(item.device_ids);
+//           let updatedDeviceIds = [...originalDeviceIds];
+
+//           [...displayChallanNotes, ...processChallanNotes].forEach((note) => {
+//             note.items.forEach((ri) => {
+//               if (ri.product_id === item.product_id) {
+//                 const returnedIds = parseJSONSafe(ri.device_ids);
+//                 updatedDeviceIds = updatedDeviceIds.filter(id => !returnedIds.includes(id));
+//               }
+//             });
+//           });
+
+//           return {
+//             ...item,
+//             device_ids: updatedDeviceIds,
+//             quantity: updatedDeviceIds.length
+//           };
+//         });
+
+//         additionalDeliveryChallans.push(challanPlain);
+//       }
+//     }
+
+//     // 7. For Buy transactions, ensure remaining_device_ids equals device_ids
+//     if (invoicePlain.transaction_type === 'Buy') {
+//       invoicePlain.items = invoicePlain.items.map((item) => ({
+//         ...item,
+//         device_ids: parseJSONSafe(item.device_ids),
+//         returned_device_ids: parseJSONSafe(item.returned_device_ids),
+//         remaining_device_ids: parseJSONSafe(item.device_ids) // For Buy, all devices are remaining
+//       }));
+//     }
+
+//     // 8. Prepare final response
+//     const response = {
+//       ...invoicePlain,
+//       order_table_id: order_table_id,
+//       order_date: order_date,
+//       credit_notes: filteredCreditNotes,
+//       additional_delivery_challans: additionalDeliveryChallans,
+//       rental_start_date: invoicePlain.rental_start_date,
+//       rental_end_date: invoicePlain.rental_end_date
+//     };
+
+//     return res.status(200).json(response);
+//   } catch (error) {
+//     console.error('Error fetching invoice:', error);
+//     res.status(500).json({
+//       message: 'Internal server error',
+//       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//     });
+//   }
+// };
+
+
+
+
+
+///26-08-2025
+
+
+
+
+// export const getInvoiceById = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     // Helper: safe JSON parse
 //     const parseJSONSafe = (input) => {
 //       try {
-//         if (typeof input === 'string') return JSON.parse(input);
+//         if (typeof input === "string") return JSON.parse(input);
 //         return Array.isArray(input) ? input : [];
 //       } catch {
 //         return [];
 //       }
 //     };
 
-//     // 4. Format invoice items
+//     // 1. Fetch invoice
+//     const invoice = await Invoice.findByPk(id, {
+//       include: [
+//         {
+//           model: InvoiceItem,
+//           as: "items",
+//           include: [
+//             {
+//               model: ProductTemplete,
+//               as: "productDetails",
+//             },
+//           ],
+//         },
+//         {
+//           model: InvoiceShippingDetail,
+//           as: "shippingDetail",
+//         },
+//       ],
+//     });
+
+//     if (!invoice) {
+//       return res.status(404).json({ message: "Invoice not found" });
+//     }
+
+//     // 2. Related order info
+//     const order = await Order.findByPk(invoice.order_id);
+//     const order_date = order?.order_date || null;
+//     const order_table_id = order?.order_id || null;
+
+//     // 3. Important dates
+//     const invoiceStart = new Date(invoice.invoice_start_date);
+//     const invoiceEnd = new Date(invoice.invoice_end_date);
+//     const invoiceDcDate = new Date(invoice.dc_date);
+
+//     let filteredCreditNotes = [];
+//     let allReturnedFromCreditNotes = [];
+//     let additionalDeliveryChallans = [];
+
+//     // Only process credit notes and additional challans if not a Buy transaction
+//     if (invoice.transaction_type !== "Buy") {
+//       // 4. Credit notes for main challan
+//       const creditNotes = await CreditNote.findAll({
+//         where: { dispatch_order_id: invoice.dispatch_order_id },
+//         include: [{ model: CreditNoteItem, as: "items" }],
+//       });
+
+//       filteredCreditNotes = creditNotes
+//         .map((note) => note.toJSON())
+//         .filter((note) => {
+//           if (!note.returned_date || !note.dc_date) return false;
+
+//           const returnedDate = new Date(note.returned_date);
+//           const dcDate = new Date(note.dc_date);
+
+//           let shouldIncludeInResponse = false;
+//           let shouldSubtractDevices = false;
+
+//           if (invoice.payment_mode === "Postpaid") {
+//             shouldSubtractDevices =
+//               returnedDate >= invoiceStart && returnedDate <= invoiceEnd;
+//             shouldIncludeInResponse = shouldSubtractDevices;
+//           } else if (invoice.payment_mode === "Prepaid") {
+//             shouldSubtractDevices = returnedDate < invoiceStart;
+
+//             const expectedReturnMonth = new Date(invoiceStart);
+//             expectedReturnMonth.setMonth(expectedReturnMonth.getMonth() - 1);
+
+//             const isExpectedMonth =
+//               returnedDate.getMonth() === expectedReturnMonth.getMonth() &&
+//               returnedDate.getFullYear() === expectedReturnMonth.getFullYear();
+
+//             const sameMonth =
+//               dcDate.getMonth() === returnedDate.getMonth() &&
+//               dcDate.getFullYear() === returnedDate.getFullYear();
+
+//             shouldIncludeInResponse = isExpectedMonth && sameMonth;
+//           }
+
+//           if (shouldSubtractDevices) {
+//             note.items.forEach((ri) => {
+//               allReturnedFromCreditNotes.push(...parseJSONSafe(ri.device_ids));
+//             });
+//           }
+
+//           return shouldIncludeInResponse;
+//         });
+
+//       // 5. Additional challans - ONLY peripheral_update = false
+//       const otherChallans = await DeliveryChallan.findAll({
+//         where: {
+//           [Op.and]: [
+//             { customer_code: invoice.customer_id.toString() },
+//             { dispatch_order_id: { [Op.ne]: invoice.dispatch_order_id } },
+//             { dc_date: { [Op.lt]: invoiceDcDate } },
+//             { peripheral_update: false },   // ✅ exclude true challans
+//           ],
+//         },
+//         include: [
+//           {
+//             model: DeliveryChallanItem,
+//             as: "items",
+//             include: [{ model: ProductTemplete, as: "product" }],
+//           },
+//         ],
+//         order: [["dc_date", "ASC"]],
+//       });
+
+//       for (const challan of otherChallans) {
+//         const challanCreditNotes = await CreditNote.findAll({
+//           where: { dispatch_order_id: challan.dispatch_order_id },
+//           include: [{ model: CreditNoteItem, as: "items" }],
+//         });
+
+//         let allReturnedForChallan = [];
+
+//         const challanFilteredCreditNotes = challanCreditNotes
+//           .map((note) => note.toJSON())
+//           .filter((note) => {
+//             if (!note.returned_date || !note.dc_date) return false;
+
+//             const returnedDate = new Date(note.returned_date);
+//             const dcDate = new Date(note.dc_date);
+
+//             let shouldIncludeInResponse = false;
+//             let shouldSubtractDevices = false;
+
+//             if (invoice.payment_mode === "Postpaid") {
+//               const challanEndDate = new Date(challan.dc_date);
+//               challanEndDate.setMonth(challanEndDate.getMonth() + 1);
+
+//               shouldSubtractDevices =
+//                 returnedDate >= new Date(challan.dc_date) &&
+//                 returnedDate <= challanEndDate;
+//               shouldIncludeInResponse = shouldSubtractDevices;
+//             } else if (invoice.payment_mode === "Prepaid") {
+//               shouldSubtractDevices = returnedDate < invoiceStart;
+
+//               const expectedReturnMonth = new Date(challan.dc_date);
+//               expectedReturnMonth.setMonth(expectedReturnMonth.getMonth() + 1);
+
+//               const isExpectedMonth =
+//                 returnedDate.getMonth() === expectedReturnMonth.getMonth() &&
+//                 returnedDate.getFullYear() === expectedReturnMonth.getFullYear();
+
+//               const sameMonth =
+//                 dcDate.getMonth() === returnedDate.getMonth() &&
+//                 dcDate.getFullYear() === returnedDate.getFullYear();
+
+//               shouldIncludeInResponse = isExpectedMonth && sameMonth;
+//             }
+
+//             if (shouldSubtractDevices) {
+//               note.items.forEach((ri) => {
+//                 allReturnedForChallan.push(...parseJSONSafe(ri.device_ids));
+//               });
+//             }
+
+//             return shouldIncludeInResponse;
+//           });
+
+//         const challanJSON = challan.toJSON();
+//         challanJSON.credit_notes = challanFilteredCreditNotes;
+
+//         challanJSON.items = challanJSON.items.map((item) => {
+//           const originalDeviceIds = parseJSONSafe(item.device_ids);
+//           const updatedDeviceIds = originalDeviceIds.filter(
+//             (id) => !allReturnedForChallan.includes(id)
+//           );
+
+//           return {
+//             ...item,
+//             device_ids: updatedDeviceIds,
+//             quantity: updatedDeviceIds.length,
+//           };
+//         });
+
+//         additionalDeliveryChallans.push(challanJSON);
+//       }
+//     }
+
+//     // 6. Adjust main invoice items
 //     const updatedItems = invoice.items.map((item) => {
 //       const device_ids = parseJSONSafe(item.device_ids);
 //       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
-//       const remaining_device_ids = device_ids.filter(
-//         (id) => !returned_device_ids.includes(id)
-//       );
+
+//       const remaining_device_ids =
+//         invoice.transaction_type === "Buy"
+//           ? device_ids
+//           : device_ids.filter(
+//               (id) =>
+//                 !returned_device_ids.includes(id) &&
+//                 !allReturnedFromCreditNotes.includes(id)
+//             );
 
 //       return {
 //         ...item.toJSON(),
@@ -885,7 +1253,676 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 //       };
 //     });
 
-//     // 5. Fetch related credit notes using dispatch_order_id
+//     // 7. Final API response
+//     const invoiceJSON = invoice.toJSON();
+//     invoiceJSON.items = updatedItems;
+//     invoiceJSON.order_table_id = order_table_id;
+//     invoiceJSON.order_date = order_date;
+//     invoiceJSON.credit_notes = filteredCreditNotes;
+//     invoiceJSON.additional_delivery_challans = additionalDeliveryChallans;
+//     invoiceJSON.rental_start_date = invoice.rental_start_date;
+//     invoiceJSON.rental_end_date = invoice.rental_end_date;
+
+//     return res.status(200).json(invoiceJSON);
+//   } catch (error) {
+//     console.error("Error fetching invoice:", error);
+//     res.status(500).json({
+//       message: "Internal server error",
+//       error: process.env.NODE_ENV === "development" ? error.message : undefined,
+//     });
+//   }
+// };
+
+
+
+//UPDATED 39-08-2025
+
+// export const getInvoiceById = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     // Helper: safe JSON parse
+//     const parseJSONSafe = (input) => {
+//       try {
+//         if (typeof input === "string") return JSON.parse(input);
+//         return Array.isArray(input) ? input : [];
+//       } catch {
+//         return [];
+//       }
+//     };
+
+//     // Helper: Get peripherals for devices
+//     const getPeripheralsForDevices = async (productId, deviceIds, invoiceStartDate) => {
+//       if (!deviceIds || deviceIds.length === 0) return [];
+      
+//       const peripherals = await Peripheral.findAll({
+//         where: {
+//           parent_product_id: productId,
+//           parent_asset_id: { [Op.in]: deviceIds },
+//           approved_date: { [Op.lt]: invoiceStartDate }
+//         },
+//         include: [{
+//           model: PeripheralItem,
+//           as: "items"
+//         }]
+//       });
+      
+//       return peripherals.map(p => p.toJSON());
+//     };
+
+//     // 1. Fetch invoice
+//     const invoice = await Invoice.findByPk(id, {
+//       include: [
+//         {
+//           model: InvoiceItem,
+//           as: "items",
+//           include: [
+//             {
+//               model: ProductTemplete,
+//               as: "productDetails",
+//             },
+//           ],
+//         },
+//         {
+//           model: InvoiceShippingDetail,
+//           as: "shippingDetail",
+//         },
+//       ],
+//     });
+
+//     if (!invoice) {
+//       return res.status(404).json({ message: "Invoice not found" });
+//     }
+
+//     // 2. Related order info
+//     const order = await Order.findByPk(invoice.order_id);
+//     const order_date = order?.order_date || null;
+//     const order_table_id = order?.order_id || null;
+
+//     // 3. Important dates
+//     const invoiceStart = new Date(invoice.invoice_start_date);
+//     const invoiceEnd = new Date(invoice.invoice_end_date);
+//     const invoiceDcDate = new Date(invoice.dc_date);
+
+//     let filteredCreditNotes = [];
+//     let allReturnedFromCreditNotes = [];
+//     let additionalDeliveryChallans = [];
+
+//     // Only process credit notes and additional challans if not a Buy transaction
+//     if (invoice.transaction_type !== "Buy") {
+//       // 4. Credit notes for main challan
+//       const creditNotes = await CreditNote.findAll({
+//         where: { dispatch_order_id: invoice.dispatch_order_id },
+//         include: [{ model: CreditNoteItem, as: "items" }],
+//       });
+
+//       filteredCreditNotes = creditNotes
+//         .map((note) => note.toJSON())
+//         .filter((note) => {
+//           if (!note.returned_date || !note.dc_date) return false;
+
+//           const returnedDate = new Date(note.returned_date);
+//           const dcDate = new Date(note.dc_date);
+
+//           let shouldIncludeInResponse = false;
+//           let shouldSubtractDevices = false;
+
+//           if (invoice.payment_mode === "Postpaid") {
+//             shouldSubtractDevices =
+//               returnedDate >= invoiceStart && returnedDate <= invoiceEnd;
+//             shouldIncludeInResponse = shouldSubtractDevices;
+//           } else if (invoice.payment_mode === "Prepaid") {
+//             shouldSubtractDevices = returnedDate < invoiceStart;
+
+//             const expectedReturnMonth = new Date(invoiceStart);
+//             expectedReturnMonth.setMonth(expectedReturnMonth.getMonth() - 1);
+
+//             const isExpectedMonth =
+//               returnedDate.getMonth() === expectedReturnMonth.getMonth() &&
+//               returnedDate.getFullYear() === expectedReturnMonth.getFullYear();
+
+//             const sameMonth =
+//               dcDate.getMonth() === returnedDate.getMonth() &&
+//               dcDate.getFullYear() === returnedDate.getFullYear();
+
+//             shouldIncludeInResponse = isExpectedMonth && sameMonth;
+//           }
+
+//           if (shouldSubtractDevices) {
+//             note.items.forEach((ri) => {
+//               allReturnedFromCreditNotes.push(...parseJSONSafe(ri.device_ids));
+//             });
+//           }
+
+//           return shouldIncludeInResponse;
+//         });
+
+//       // 5. Additional challans - ONLY peripheral_update = false
+//       const otherChallans = await DeliveryChallan.findAll({
+//         where: {
+//           [Op.and]: [
+//             { customer_code: invoice.customer_id.toString() },
+//             { dispatch_order_id: { [Op.ne]: invoice.dispatch_order_id } },
+//             { dc_date: { [Op.lt]: invoiceDcDate } },
+//             { peripheral_update: false },   // ✅ exclude true challans
+//           ],
+//         },
+//         include: [
+//           {
+//             model: DeliveryChallanItem,
+//             as: "items",
+//             include: [{ model: ProductTemplete, as: "product" }],
+//           },
+//         ],
+//         order: [["dc_date", "ASC"]],
+//       });
+
+//       for (const challan of otherChallans) {
+//         const challanCreditNotes = await CreditNote.findAll({
+//           where: { dispatch_order_id: challan.dispatch_order_id },
+//           include: [{ model: CreditNoteItem, as: "items" }],
+//         });
+
+//         let allReturnedForChallan = [];
+
+//         const challanFilteredCreditNotes = challanCreditNotes
+//           .map((note) => note.toJSON())
+//           .filter((note) => {
+//             if (!note.returned_date || !note.dc_date) return false;
+
+//             const returnedDate = new Date(note.returned_date);
+//             const dcDate = new Date(note.dc_date);
+
+//             let shouldIncludeInResponse = false;
+//             let shouldSubtractDevices = false;
+
+//             if (invoice.payment_mode === "Postpaid") {
+//               const challanEndDate = new Date(challan.dc_date);
+//               challanEndDate.setMonth(challanEndDate.getMonth() + 1);
+
+//               shouldSubtractDevices =
+//                 returnedDate >= new Date(challan.dc_date) &&
+//                 returnedDate <= challanEndDate;
+//               shouldIncludeInResponse = shouldSubtractDevices;
+//             } else if (invoice.payment_mode === "Prepaid") {
+//               shouldSubtractDevices = returnedDate < invoiceStart;
+
+//               const expectedReturnMonth = new Date(challan.dc_date);
+//               expectedReturnMonth.setMonth(expectedReturnMonth.getMonth() + 1);
+
+//               const isExpectedMonth =
+//                 returnedDate.getMonth() === expectedReturnMonth.getMonth() &&
+//                 returnedDate.getFullYear() === expectedReturnMonth.getFullYear();
+
+//               const sameMonth =
+//                 dcDate.getMonth() === returnedDate.getMonth() &&
+//                 dcDate.getFullYear() === returnedDate.getFullYear();
+
+//               shouldIncludeInResponse = isExpectedMonth && sameMonth;
+//             }
+
+//             if (shouldSubtractDevices) {
+//               note.items.forEach((ri) => {
+//                 allReturnedForChallan.push(...parseJSONSafe(ri.device_ids));
+//               });
+//             }
+
+//             return shouldIncludeInResponse;
+//           });
+
+//         const challanJSON = challan.toJSON();
+//         challanJSON.credit_notes = challanFilteredCreditNotes;
+
+//         challanJSON.items = challanJSON.items.map((item) => {
+//           const originalDeviceIds = parseJSONSafe(item.device_ids);
+//           const updatedDeviceIds = originalDeviceIds.filter(
+//             (id) => !allReturnedForChallan.includes(id)
+//           );
+
+//           return {
+//             ...item,
+//             device_ids: updatedDeviceIds,
+//             quantity: updatedDeviceIds.length,
+//           };
+//         });
+
+//         additionalDeliveryChallans.push(challanJSON);
+//       }
+//     }
+
+//     // 6. Adjust main invoice items and get peripherals
+//     const updatedItems = [];
+//     for (const item of invoice.items) {
+//       const device_ids = parseJSONSafe(item.device_ids);
+//       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
+
+//       const remaining_device_ids =
+//         invoice.transaction_type === "Buy"
+//           ? device_ids
+//           : device_ids.filter(
+//               (id) =>
+//                 !returned_device_ids.includes(id) &&
+//                 !allReturnedFromCreditNotes.includes(id)
+//             );
+
+//       // Get peripherals for devices delivered before invoice start month
+//       const peripheralItems = await getPeripheralsForDevices(
+//         item.product_id,
+//         remaining_device_ids,
+//         invoiceStart
+//       );
+
+//       updatedItems.push({
+//         ...item.toJSON(),
+//         device_ids,
+//         returned_device_ids,
+//         remaining_device_ids,
+//         peripheralItems // Add peripherals to the item
+//       });
+//     }
+
+//     // 7. Get peripherals for additional delivery challan items
+//     for (const challan of additionalDeliveryChallans) {
+//       for (const item of challan.items) {
+//         const device_ids = parseJSONSafe(item.device_ids);
+        
+//         // Get peripherals for devices delivered before invoice start month
+//         const peripheralItems = await getPeripheralsForDevices(
+//           item.product_id,
+//           device_ids,
+//           invoiceStart
+//         );
+        
+//         item.peripheralItems = peripheralItems;
+//       }
+//     }
+
+//     // 8. Final API response
+//     const invoiceJSON = invoice.toJSON();
+//     invoiceJSON.items = updatedItems;
+//     invoiceJSON.order_table_id = order_table_id;
+//     invoiceJSON.order_date = order_date;
+//     invoiceJSON.credit_notes = filteredCreditNotes;
+//     invoiceJSON.additional_delivery_challans = additionalDeliveryChallans;
+//     invoiceJSON.rental_start_date = invoice.rental_start_date;
+//     invoiceJSON.rental_end_date = invoice.rental_end_date;
+
+//     return res.status(200).json(invoiceJSON);
+//   } catch (error) {
+//     console.error("Error fetching invoice:", error);
+//     res.status(500).json({
+//       message: "Internal server error",
+//       error: process.env.NODE_ENV === "development" ? error.message : undefined,
+//     });
+//   }
+// };
+
+
+
+
+////02-09-2025
+
+
+
+
+// export const getInvoiceById = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     // Helper: safe JSON parse
+//     const parseJSONSafe = (input) => {
+//       try {
+//         if (typeof input === "string") return JSON.parse(input);
+//         return Array.isArray(input) ? input : [];
+//       } catch {
+//         return [];
+//       }
+//     };
+
+//     // Helper: Get peripherals for devices
+//     const getPeripheralsForDevices = async (productId, deviceIds, invoiceStartDate) => {
+//       if (!deviceIds || deviceIds.length === 0) return [];
+      
+//       const peripherals = await Peripheral.findAll({
+//         where: {
+//           parent_product_id: productId,
+//           parent_asset_id: { [Op.in]: deviceIds },
+//           approved_date: { [Op.lt]: invoiceStartDate }
+//         },
+//         include: [{
+//           model: PeripheralItem,
+//           as: "items"
+//         }]
+//       });
+      
+//       return peripherals.map(p => p.toJSON());
+//     };
+
+//     // Helper: Check if challan should be included based on dates
+// const shouldIncludeChallan = (challanOrderSaleDate, invoiceStartDate) => {
+//   // If challan.order_sale_date is NULL → always include
+//   if (!challanOrderSaleDate) return true;
+//   if (!invoiceStartDate) return false;
+
+//   const challanDate = new Date(challanOrderSaleDate);
+//   const invoiceStart = new Date(invoiceStartDate);
+
+//   // Reset both dates to the first day of their respective months for accurate comparison
+//   const challanMonth = new Date(challanDate.getFullYear(), challanDate.getMonth(), 1);
+//   const invoiceMonth = new Date(invoiceStart.getFullYear(), invoiceStart.getMonth(), 1);
+
+//   // Same month
+//   const sameMonth = challanMonth.getTime() === invoiceMonth.getTime();
+//   // Only include challans same month or AFTER invoice month
+//   const challanAfterInvoice = challanMonth >= invoiceMonth;
+
+//   return sameMonth || challanAfterInvoice;
+// };
+
+
+//     // 1. Fetch invoice
+//     const invoice = await Invoice.findByPk(id, {
+//       include: [
+//         {
+//           model: InvoiceItem,
+//           as: "items",
+//           include: [
+//             {
+//               model: ProductTemplete,
+//               as: "productDetails",
+//             },
+//           ],
+//         },
+//         {
+//           model: InvoiceShippingDetail,
+//           as: "shippingDetail",
+//         },
+//       ],
+//     });
+
+//     if (!invoice) {
+//       return res.status(404).json({ message: "Invoice not found" });
+//     }
+
+//     // 2. Related order info
+//     const order = await Order.findByPk(invoice.order_id);
+//     const order_date = order?.order_date || null;
+//     const order_table_id = order?.order_id || null;
+
+//     // 3. Important dates
+//     const invoiceStart = new Date(invoice.invoice_start_date);
+//     const invoiceEnd = new Date(invoice.invoice_end_date);
+//     const invoiceDcDate = new Date(invoice.dc_date);
+
+//     let filteredCreditNotes = [];
+//     let allReturnedFromCreditNotes = [];
+//     let additionalDeliveryChallans = [];
+
+//     // Only process credit notes and additional challans if not a Buy transaction
+//     if (invoice.transaction_type !== "Buy") {
+//       // 4. Credit notes for main challan
+//       const creditNotes = await CreditNote.findAll({
+//         where: { dispatch_order_id: invoice.dispatch_order_id },
+//         include: [{ model: CreditNoteItem, as: "items" }],
+//       });
+
+//       filteredCreditNotes = creditNotes
+//         .map((note) => note.toJSON())
+//         .filter((note) => {
+//           if (!note.returned_date || !note.dc_date) return false;
+
+//           const returnedDate = new Date(note.returned_date);
+//           const dcDate = new Date(note.dc_date);
+
+//           let shouldIncludeInResponse = false;
+//           let shouldSubtractDevices = false;
+
+//           if (invoice.payment_mode === "Postpaid") {
+//             shouldSubtractDevices =
+//               returnedDate >= invoiceStart && returnedDate <= invoiceEnd;
+//             shouldIncludeInResponse = shouldSubtractDevices;
+//           } else if (invoice.payment_mode === "Prepaid") {
+//             shouldSubtractDevices = returnedDate < invoiceStart;
+
+//             const expectedReturnMonth = new Date(invoiceStart);
+//             expectedReturnMonth.setMonth(expectedReturnMonth.getMonth() - 1);
+
+//             const isExpectedMonth =
+//               returnedDate.getMonth() === expectedReturnMonth.getMonth() &&
+//               returnedDate.getFullYear() === expectedReturnMonth.getFullYear();
+
+//             const sameMonth =
+//               dcDate.getMonth() === returnedDate.getMonth() &&
+//               dcDate.getFullYear() === returnedDate.getFullYear();
+
+//             shouldIncludeInResponse = isExpectedMonth && sameMonth;
+//           }
+
+//           if (shouldSubtractDevices) {
+//             note.items.forEach((ri) => {
+//               allReturnedFromCreditNotes.push(...parseJSONSafe(ri.device_ids));
+//             });
+//           }
+
+//           return shouldIncludeInResponse;
+//         });
+
+//       // 5. Additional challans - ONLY peripheral_update = false
+//       const otherChallans = await DeliveryChallan.findAll({
+//         where: {
+//           [Op.and]: [
+//             { customer_code: invoice.customer_id.toString() },
+//             { dispatch_order_id: { [Op.ne]: invoice.dispatch_order_id } },
+//             { dc_date: { [Op.lt]: invoiceDcDate } },
+//             { peripheral_update: false },   // ✅ exclude true challans
+//           ],
+//         },
+//         include: [
+//           {
+//             model: DeliveryChallanItem,
+//             as: "items",
+//             include: [{ model: ProductTemplete, as: "product" }],
+//           },
+//         ],
+//         order: [["dc_date", "ASC"]],
+//       });
+
+//       for (const challan of otherChallans) {
+//         // Check if challan should be included based on order_sale_date and invoice_start_date
+//         if (!shouldIncludeChallan(challan.order_sale_date, invoice.invoice_start_date)) {
+//           continue; // Skip this challan if it's from a future month
+//         }
+
+//         const challanCreditNotes = await CreditNote.findAll({
+//           where: { dispatch_order_id: challan.dispatch_order_id },
+//           include: [{ model: CreditNoteItem, as: "items" }],
+//         });
+
+//         let allReturnedForChallan = [];
+
+//         const challanFilteredCreditNotes = challanCreditNotes
+//           .map((note) => note.toJSON())
+//           .filter((note) => {
+//             if (!note.returned_date || !note.dc_date) return false;
+
+//             const returnedDate = new Date(note.returned_date);
+//             const dcDate = new Date(note.dc_date);
+
+//             let shouldIncludeInResponse = false;
+//             let shouldSubtractDevices = false;
+
+//             if (invoice.payment_mode === "Postpaid") {
+//               const challanEndDate = new Date(challan.dc_date);
+//               challanEndDate.setMonth(challanEndDate.getMonth() + 1);
+
+//               shouldSubtractDevices =
+//                 returnedDate >= new Date(challan.dc_date) &&
+//                 returnedDate <= challanEndDate;
+//               shouldIncludeInResponse = shouldSubtractDevices;
+//             } else if (invoice.payment_mode === "Prepaid") {
+//               shouldSubtractDevices = returnedDate < invoiceStart;
+
+//               const expectedReturnMonth = new Date(challan.dc_date);
+//               expectedReturnMonth.setMonth(expectedReturnMonth.getMonth() + 1);
+
+//               const isExpectedMonth =
+//                 returnedDate.getMonth() === expectedReturnMonth.getMonth() &&
+//                 returnedDate.getFullYear() === expectedReturnMonth.getFullYear();
+
+//               const sameMonth =
+//                 dcDate.getMonth() === returnedDate.getMonth() &&
+//                 dcDate.getFullYear() === returnedDate.getFullYear();
+
+//               shouldIncludeInResponse = isExpectedMonth && sameMonth;
+//             }
+
+//             if (shouldSubtractDevices) {
+//               note.items.forEach((ri) => {
+//                 allReturnedForChallan.push(...parseJSONSafe(ri.device_ids));
+//               });
+//             }
+
+//             return shouldIncludeInResponse;
+//           });
+
+//         const challanJSON = challan.toJSON();
+//         challanJSON.credit_notes = challanFilteredCreditNotes;
+
+//         challanJSON.items = challanJSON.items.map((item) => {
+//           const originalDeviceIds = parseJSONSafe(item.device_ids);
+//           const updatedDeviceIds = originalDeviceIds.filter(
+//             (id) => !allReturnedForChallan.includes(id)
+//           );
+
+//           return {
+//             ...item,
+//             device_ids: updatedDeviceIds,
+//             quantity: updatedDeviceIds.length,
+//           };
+//         });
+
+//         additionalDeliveryChallans.push(challanJSON);
+//       }
+//     }
+
+//     // 6. Adjust main invoice items and get peripherals
+//     const updatedItems = [];
+//     for (const item of invoice.items) {
+//       const device_ids = parseJSONSafe(item.device_ids);
+//       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
+
+//       const remaining_device_ids =
+//         invoice.transaction_type === "Buy"
+//           ? device_ids
+//           : device_ids.filter(
+//               (id) =>
+//                 !returned_device_ids.includes(id) &&
+//                 !allReturnedFromCreditNotes.includes(id)
+//             );
+
+//       // Get peripherals for devices delivered before invoice start month
+//       const peripheralItems = await getPeripheralsForDevices(
+//         item.product_id,
+//         remaining_device_ids,
+//         invoiceStart
+//       );
+
+//       updatedItems.push({
+//         ...item.toJSON(),
+//         device_ids,
+//         returned_device_ids,
+//         remaining_device_ids,
+//         peripheralItems // Add peripherals to the item
+//       });
+//     }
+
+//     // 7. Get peripherals for additional delivery challan items
+//     for (const challan of additionalDeliveryChallans) {
+//       for (const item of challan.items) {
+//         const device_ids = parseJSONSafe(item.device_ids);
+        
+//         // Get peripherals for devices delivered before invoice start month
+//         const peripheralItems = await getPeripheralsForDevices(
+//           item.product_id,
+//           device_ids,
+//           invoiceStart
+//         );
+        
+//         item.peripheralItems = peripheralItems;
+//       }
+//     }
+
+//     // 8. Final API response
+//     const invoiceJSON = invoice.toJSON();
+//     invoiceJSON.items = updatedItems;
+//     invoiceJSON.order_table_id = order_table_id;
+//     invoiceJSON.order_date = order_date;
+//     invoiceJSON.credit_notes = filteredCreditNotes;
+//     invoiceJSON.additional_delivery_challans = additionalDeliveryChallans;
+//     invoiceJSON.rental_start_date = invoice.rental_start_date;
+//     invoiceJSON.rental_end_date = invoice.rental_end_date;
+
+//     return res.status(200).json(invoiceJSON);
+//   } catch (error) {
+//     console.error("Error fetching invoice:", error);
+//     res.status(500).json({
+//       message: "Internal server error",
+//       error: process.env.NODE_ENV === "development" ? error.message : undefined,
+//     });
+//   }
+// };
+
+
+
+
+
+
+
+
+
+
+
+// export const getInvoiceById = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     const invoice = await Invoice.findByPk(id, {
+//       include: [
+//         {
+//           model: InvoiceItem,
+//           as: "items",
+//           include: [
+//             {
+//               model: ProductTemplete,
+//               as: "productDetails",
+//             },
+//           ],
+//         },
+//         {
+//           model: InvoiceShippingDetail,
+//           as: "shippingDetail",
+//         },
+//       ],
+//     });
+
+//     if (!invoice) {
+//       return res.status(404).json({ message: "Invoice not found" });
+//     }
+
+//     const order = await Order.findByPk(invoice.order_id);
+//     const order_date = order?.order_date || null;
+//     const order_table_id = order?.order_id || null;
+
+//     const parseJSONSafe = (input) => {
+//       try {
+//         if (typeof input === "string") return JSON.parse(input);
+//         return Array.isArray(input) ? input : [];
+//       } catch {
+//         return [];
+//       }
+//     };
+
+//     // Get ALL credit notes for the invoice
 //     const creditNotes = await CreditNote.findAll({
 //       where: {
 //         dispatch_order_id: invoice.dispatch_order_id,
@@ -893,52 +1930,194 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 //       include: [
 //         {
 //           model: CreditNoteItem,
-//           as: 'items',
+//           as: "items",
 //         },
 //       ],
 //     });
 
-//     // 6. Filter: only credit notes with returned_date exactly 1 month before invoice_start_date
 //     const invoiceStart = new Date(invoice.invoice_start_date);
 //     const invoiceStartMonth = invoiceStart.getMonth();
 //     const invoiceStartYear = invoiceStart.getFullYear();
 
-//     const formattedCreditNotes = creditNotes
-//       .map((note) => note.toJSON())
-//       .filter((note) => {
-//         if (!note.returned_date) return false;
+//     // Process credit notes
+//     const allCreditNotes = creditNotes.map((note) => note.toJSON());
+
+//     // Separate credit notes into two groups
+//     const sameMonthCreditNotes = [];
+//     const differentMonthCreditNotes = [];
+
+//     allCreditNotes.forEach((note) => {
+//       if (!note.returned_date) return;
+
+//       const returnedDate = new Date(note.returned_date);
+//       const returnedMonth = returnedDate.getMonth();
+//       const returnedYear = returnedDate.getFullYear();
+
+//       if (returnedMonth === invoiceStartMonth && 
+//           returnedYear === invoiceStartYear) {
+//         sameMonthCreditNotes.push(note);
+//       } else {
+//         differentMonthCreditNotes.push(note);
+//       }
+//     });
+
+//     // Update main invoice items - only subtract different month credit notes
+//     const updatedItems = invoice.items.map((item) => {
+//       const device_ids = parseJSONSafe(item.device_ids);
+//       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
+
+//       // Only include returned devices from different month credit notes
+//       const returnedDeviceIdsToSubtract = [];
+
+//       differentMonthCreditNotes.forEach((note) => {
+//         note.items.forEach((ri) => {
+//           if (ri.product_id === item.product_id) {
+//             returnedDeviceIdsToSubtract.push(...(ri.device_ids || []));
+//           }
+//         });
+//       });
+
+//       return {
+//         ...item.toJSON(),
+//         device_ids: device_ids.filter(
+//           (id) => !returnedDeviceIdsToSubtract.includes(id)
+//         ),
+//         returned_device_ids,
+//       };
+//     });
+
+//     // Fetch additional delivery challans
+//     const invoiceDcDate = new Date(invoice.dc_date);
+
+//     const otherChallans = await DeliveryChallan.findAll({
+//       where: {
+//         [Op.and]: [
+//           {
+//             customer_code: invoice.customer_id.toString(),
+//           },
+//           {
+//             dispatch_order_id: {
+//               [Op.ne]: invoice.dispatch_order_id,
+//             },
+//           },
+//           {
+//             dc_date: {
+//               [Op.lt]: invoiceDcDate,
+//             },
+//           },
+//         ],
+//       },
+//       include: [
+//         {
+//           model: DeliveryChallanItem,
+//           as: "items",
+//           include: [
+//             {
+//               model: ProductTemplete,
+//               as: "product",
+//             },
+//           ],
+//         },
+//       ],
+//     });
+
+//     const additionalDeliveryChallans = [];
+
+//     for (const challan of otherChallans) {
+//       const challanDispatchOrderId = challan.dispatch_order_id;
+
+//       // Get ALL credit notes for this challan
+//       const challanCreditNotes = await CreditNote.findAll({
+//         where: {
+//           dispatch_order_id: challanDispatchOrderId,
+//         },
+//         include: [
+//           {
+//             model: CreditNoteItem,
+//             as: "items",
+//           },
+//         ],
+//       });
+
+//       const allChallanCreditNotes = challanCreditNotes.map(note => note.toJSON());
+
+//       // Separate challan credit notes
+//       const challanSameMonthNotes = [];
+//       const challanDifferentMonthNotes = [];
+
+//       allChallanCreditNotes.forEach((note) => {
+//         if (!note.returned_date) return;
 
 //         const returnedDate = new Date(note.returned_date);
 //         const returnedMonth = returnedDate.getMonth();
 //         const returnedYear = returnedDate.getFullYear();
 
-//         // Handle year-end crossover (e.g., Jan - Dec)
-//         const isOneMonthBefore =
-//           (invoiceStartMonth === 0 && returnedMonth === 11 && invoiceStartYear - returnedYear === 1) ||
-//           (returnedYear === invoiceStartYear && invoiceStartMonth - returnedMonth === 1);
+//         if (returnedMonth === invoiceStartMonth && 
+//             returnedYear === invoiceStartYear) {
+//           challanSameMonthNotes.push(note);
+//         } else {
+//           challanDifferentMonthNotes.push(note);
+//         }
+//       });
 
-//         return isOneMonthBefore;
-//       })
-//       .map((note) => ({
-//         ...note,
-//         items: note.items || [],
-//       }));
+//       const challanJSON = challan.toJSON();
 
-//     // 7. Build final response
+//       // Show same month credit notes
+//       for (const note of challanSameMonthNotes) {
+//         for (const item of note.items) {
+//           const product = await ProductTemplete.findOne({
+//             where: {
+//               id: item.product_id,
+//             },
+//           });
+//           item.productDetails = product?.toJSON() || null;
+//         }
+//       }
+
+//       challanJSON.credit_notes = challanSameMonthNotes;
+
+//       // Subtract different month credit notes from items
+//       challanJSON.items = challanJSON.items.map((item) => {
+//         let returnedDeviceIds = [];
+
+//         challanDifferentMonthNotes.forEach((note) => {
+//           note.items.forEach((ri) => {
+//             if (ri.product_id === item.product_id) {
+//               returnedDeviceIds.push(...(ri.device_ids || []));
+//             }
+//           });
+//         });
+
+//         const originalDeviceIds = item.device_ids || [];
+//         const updatedDeviceIds = originalDeviceIds.filter(
+//           (id) => !returnedDeviceIds.includes(id)
+//         );
+
+//         return {
+//           ...item,
+//           device_ids: updatedDeviceIds,
+//           quantity: updatedDeviceIds.length,
+//         };
+//       });
+
+//       additionalDeliveryChallans.push(challanJSON);
+//     }
+
 //     const invoiceJSON = invoice.toJSON();
 //     invoiceJSON.items = updatedItems;
 //     invoiceJSON.order_table_id = order_table_id;
 //     invoiceJSON.order_date = order_date;
+//     invoiceJSON.credit_notes = sameMonthCreditNotes; // Only show same month notes
+//     invoiceJSON.additional_delivery_challans = additionalDeliveryChallans;
 //     invoiceJSON.rental_start_date = invoice.rental_start_date;
 //     invoiceJSON.rental_end_date = invoice.rental_end_date;
-//     invoiceJSON.credit_notes = formattedCreditNotes;
 
 //     return res.status(200).json(invoiceJSON);
 //   } catch (error) {
-//     console.error('Error fetching invoice:', error);
+//     console.error("Error fetching invoice:", error);
 //     res.status(500).json({
-//       message: 'Internal server error',
-//       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+//       message: "Internal server error",
+//       error: process.env.NODE_ENV === "development" ? error.message : undefined,
 //     });
 //   }
 // };
@@ -950,6 +2129,58 @@ export const getInvoiceById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Helper: safe JSON parse
+    const parseJSONSafe = (input) => {
+      try {
+        if (typeof input === "string") return JSON.parse(input);
+        return Array.isArray(input) ? input : [];
+      } catch {
+        return [];
+      }
+    };
+
+    // Helper: Get peripherals for devices
+    const getPeripheralsForDevices = async (productId, deviceIds, invoiceStartDate) => {
+      if (!deviceIds || deviceIds.length === 0) return [];
+      
+      const peripherals = await Peripheral.findAll({
+        where: {
+          parent_product_id: productId,
+          parent_asset_id: { [Op.in]: deviceIds },
+          approved_date: { [Op.lt]: invoiceStartDate }
+        },
+        include: [{
+          model: PeripheralItem,
+          as: "items"
+        }]
+      });
+      
+      return peripherals.map(p => p.toJSON());
+    };
+
+    // Helper: Check if challan should be included based on dates
+const shouldIncludeChallan = (challanOrderSaleDate, invoiceStartDate) => {
+  // If challan.order_sale_date is NULL → always include
+  if (!challanOrderSaleDate) return true;
+  if (!invoiceStartDate) return false;
+
+  const challanDate = new Date(challanOrderSaleDate);
+  const invoiceStart = new Date(invoiceStartDate);
+
+  // Reset both dates to the first day of their respective months for accurate comparison
+  const challanMonth = new Date(challanDate.getFullYear(), challanDate.getMonth(), 1);
+  const invoiceMonth = new Date(invoiceStart.getFullYear(), invoiceStart.getMonth(), 1);
+
+  // Same month
+  const sameMonth = challanMonth.getTime() === invoiceMonth.getTime();
+  // Only include challans same month or AFTER invoice month
+  const challanAfterInvoice = challanMonth >= invoiceMonth;
+
+  return sameMonth || challanAfterInvoice;
+};
+
+
+    // 1. Fetch invoice
     const invoice = await Invoice.findByPk(id, {
       include: [
         {
@@ -973,216 +2204,222 @@ export const getInvoiceById = async (req, res) => {
       return res.status(404).json({ message: "Invoice not found" });
     }
 
+    // 2. Related order info
     const order = await Order.findByPk(invoice.order_id);
     const order_date = order?.order_date || null;
     const order_table_id = order?.order_id || null;
 
-    const parseJSONSafe = (input) => {
-      try {
-        if (typeof input === "string") return JSON.parse(input);
-        return Array.isArray(input) ? input : [];
-      } catch {
-        return [];
-      }
-    };
+    // 3. Important dates
+    const invoiceStart = new Date(invoice.invoice_start_date);
+    const invoiceEnd = new Date(invoice.invoice_end_date);
+    const invoiceDcDate = new Date(invoice.dc_date);
 
-    // Update main invoice items (if needed)
-    const updatedItems = invoice.items.map((item) => {
+    let filteredCreditNotes = [];
+    let allReturnedFromCreditNotes = [];
+    let additionalDeliveryChallans = [];
+
+    // Only process credit notes and additional challans if not a Buy transaction
+    if (invoice.transaction_type !== "Buy") {
+      // 4. Credit notes for main challan
+      const creditNotes = await CreditNote.findAll({
+        where: { dispatch_order_id: invoice.dispatch_order_id },
+        include: [{ model: CreditNoteItem, as: "items" }],
+      });
+
+      filteredCreditNotes = creditNotes
+        .map((note) => note.toJSON())
+        .filter((note) => {
+          if (!note.returned_date || !note.dc_date) return false;
+
+          const returnedDate = new Date(note.returned_date);
+          const dcDate = new Date(note.dc_date);
+
+          let shouldIncludeInResponse = false;
+          let shouldSubtractDevices = false;
+
+          if (invoice.payment_mode === "Postpaid") {
+            shouldSubtractDevices =
+              returnedDate >= invoiceStart && returnedDate <= invoiceEnd;
+            shouldIncludeInResponse = shouldSubtractDevices;
+          } else if (invoice.payment_mode === "Prepaid") {
+            shouldSubtractDevices = returnedDate < invoiceStart;
+
+            const expectedReturnMonth = new Date(invoiceStart);
+            expectedReturnMonth.setMonth(expectedReturnMonth.getMonth() - 1);
+
+            const isExpectedMonth =
+              returnedDate.getMonth() === expectedReturnMonth.getMonth() &&
+              returnedDate.getFullYear() === expectedReturnMonth.getFullYear();
+
+            const sameMonth =
+              dcDate.getMonth() === returnedDate.getMonth() &&
+              dcDate.getFullYear() === returnedDate.getFullYear();
+
+            shouldIncludeInResponse = isExpectedMonth && sameMonth;
+          }
+
+          if (shouldSubtractDevices) {
+            note.items.forEach((ri) => {
+              allReturnedFromCreditNotes.push(...parseJSONSafe(ri.device_ids));
+            });
+          }
+
+          return shouldIncludeInResponse;
+        });
+
+      // 5. Additional challans - ONLY peripheral_update = false + same payment_mode + not Buy
+const otherChallans = await DeliveryChallan.findAll({
+  where: {
+    [Op.and]: [
+      { customer_code: invoice.customer_id.toString() },
+      { dispatch_order_id: { [Op.ne]: invoice.dispatch_order_id } },
+      { dc_date: { [Op.lt]: invoiceDcDate } },
+      { peripheral_update: false },
+      { payment_type: invoice.payment_mode },   // ✅ match Prepaid/Postpaid
+    ],
+  },
+  include: [
+    {
+      model: DeliveryChallanItem,
+      as: "items",
+      include: [{ model: ProductTemplete, as: "product" }],
+    },
+  ],
+  order: [["dc_date", "ASC"]],
+});
+
+
+      for (const challan of otherChallans) {
+        // Check if challan should be included based on order_sale_date and invoice_start_date
+        if (!shouldIncludeChallan(challan.order_sale_date, invoice.invoice_start_date)) {
+          continue; // Skip this challan if it's from a future month
+        }
+
+        const challanCreditNotes = await CreditNote.findAll({
+          where: { dispatch_order_id: challan.dispatch_order_id },
+          include: [{ model: CreditNoteItem, as: "items" }],
+        });
+
+        let allReturnedForChallan = [];
+
+        const challanFilteredCreditNotes = challanCreditNotes
+          .map((note) => note.toJSON())
+          .filter((note) => {
+            if (!note.returned_date || !note.dc_date) return false;
+
+            const returnedDate = new Date(note.returned_date);
+            const dcDate = new Date(note.dc_date);
+
+            let shouldIncludeInResponse = false;
+            let shouldSubtractDevices = false;
+
+            if (invoice.payment_mode === "Postpaid") {
+              const challanEndDate = new Date(challan.dc_date);
+              challanEndDate.setMonth(challanEndDate.getMonth() + 1);
+
+              shouldSubtractDevices =
+                returnedDate >= new Date(challan.dc_date) &&
+                returnedDate <= challanEndDate;
+              shouldIncludeInResponse = shouldSubtractDevices;
+            } else if (invoice.payment_mode === "Prepaid") {
+              shouldSubtractDevices = returnedDate < invoiceStart;
+
+              const expectedReturnMonth = new Date(challan.dc_date);
+              expectedReturnMonth.setMonth(expectedReturnMonth.getMonth() + 1);
+
+              const isExpectedMonth =
+                returnedDate.getMonth() === expectedReturnMonth.getMonth() &&
+                returnedDate.getFullYear() === expectedReturnMonth.getFullYear();
+
+              const sameMonth =
+                dcDate.getMonth() === returnedDate.getMonth() &&
+                dcDate.getFullYear() === returnedDate.getFullYear();
+
+              shouldIncludeInResponse = isExpectedMonth && sameMonth;
+            }
+
+            if (shouldSubtractDevices) {
+              note.items.forEach((ri) => {
+                allReturnedForChallan.push(...parseJSONSafe(ri.device_ids));
+              });
+            }
+
+            return shouldIncludeInResponse;
+          });
+
+        const challanJSON = challan.toJSON();
+        challanJSON.credit_notes = challanFilteredCreditNotes;
+
+        challanJSON.items = challanJSON.items.map((item) => {
+          const originalDeviceIds = parseJSONSafe(item.device_ids);
+          const updatedDeviceIds = originalDeviceIds.filter(
+            (id) => !allReturnedForChallan.includes(id)
+          );
+
+          return {
+            ...item,
+            device_ids: updatedDeviceIds,
+            quantity: updatedDeviceIds.length,
+          };
+        });
+
+        additionalDeliveryChallans.push(challanJSON);
+      }
+    }
+
+    // 6. Adjust main invoice items and get peripherals
+    const updatedItems = [];
+    for (const item of invoice.items) {
       const device_ids = parseJSONSafe(item.device_ids);
       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
 
-      return {
+      const remaining_device_ids =
+        invoice.transaction_type === "Buy"
+          ? device_ids
+          : device_ids.filter(
+              (id) =>
+                !returned_device_ids.includes(id) &&
+                !allReturnedFromCreditNotes.includes(id)
+            );
+
+      // Get peripherals for devices delivered before invoice start month
+      const peripheralItems = await getPeripheralsForDevices(
+        item.product_id,
+        remaining_device_ids,
+        invoiceStart
+      );
+
+      updatedItems.push({
         ...item.toJSON(),
-        device_ids: device_ids.filter(
-          (id) => !returned_device_ids.includes(id)
-        ),
+        device_ids,
         returned_device_ids,
-      };
-    });
-
-    // Filter root credit notes
-    const creditNotes = await CreditNote.findAll({
-      where: {
-        dispatch_order_id: invoice.dispatch_order_id,
-      },
-      include: [
-        {
-          model: CreditNoteItem,
-          as: "items",
-        },
-      ],
-    });
-
-    const invoiceStart = new Date(invoice.invoice_start_date);
-    const invoiceStartMonth = invoiceStart.getMonth();
-    const invoiceStartYear = invoiceStart.getFullYear();
-
-    const formattedCreditNotes = creditNotes
-      .map((note) => note.toJSON())
-      .filter((note) => {
-        if (!note.returned_date) return false;
-        
-        // If payment mode is Prepaid and same month, don't filter it out
-        if (invoice.payment_mode === "Prepaid") {
-          const returnedDate = new Date(note.returned_date);
-          const returnedMonth = returnedDate.getMonth();
-          const returnedYear = returnedDate.getFullYear();
-          
-          // Check if same month and year
-          if (returnedMonth === invoiceStartMonth && 
-              returnedYear === invoiceStartYear) {
-            return false; // Don't include in filtered notes
-          }
-        }
-        
-        const returnedDate = new Date(note.returned_date);
-        const returnedMonth = returnedDate.getMonth();
-        const returnedYear = returnedDate.getFullYear();
-
-        const isSameOrPreviousMonth =
-          (invoiceStartMonth === 0 &&
-            returnedMonth === 11 &&
-            invoiceStartYear - returnedYear === 1) || // Dec -> Jan (year change)
-          (returnedYear === invoiceStartYear &&
-            (invoiceStartMonth - returnedMonth === 1 || 
-             invoiceStartMonth - returnedMonth === 0)); // Same or previous month
-
-        return isSameOrPreviousMonth;
+        remaining_device_ids,
+        peripheralItems // Add peripherals to the item
       });
-
-    // Fetch additional delivery challans before current invoice.dc_date
-    const invoiceDcDate = new Date(invoice.dc_date);
-
-    const otherChallans = await DeliveryChallan.findAll({
-      where: {
-        [Op.and]: [
-          {
-            customer_code: invoice.customer_id.toString(),
-          },
-          {
-            dispatch_order_id: {
-              [Op.ne]: invoice.dispatch_order_id,
-            },
-          },
-          {
-            dc_date: {
-              [Op.lt]: invoiceDcDate,
-            },
-          },
-        ],
-      },
-      include: [
-        {
-          model: DeliveryChallanItem,
-          as: "items",
-          include: [
-            {
-              model: ProductTemplete,
-              as: "product",
-            },
-          ],
-        },
-      ],
-    });
-
-    const additionalDeliveryChallans = [];
-
-    for (const challan of otherChallans) {
-      const challanDispatchOrderId = challan.dispatch_order_id;
-
-      const challanCreditNotes = await CreditNote.findAll({
-        where: {
-          dispatch_order_id: challanDispatchOrderId,
-        },
-        include: [
-          {
-            model: CreditNoteItem,
-            as: "items",
-          },
-        ],
-      });
-
-      const filteredNotes = [];
-
-      for (const note of challanCreditNotes) {
-        if (!note.returned_date) continue;
-
-        // Skip if payment mode is Prepaid and same month
-        if (invoice.payment_mode === "Prepaid") {
-          const returnedDate = new Date(note.returned_date);
-          const returnedMonth = returnedDate.getMonth();
-          const returnedYear = returnedDate.getFullYear();
-          
-          if (returnedMonth === invoiceStartMonth && 
-              returnedYear === invoiceStartYear) {
-            continue; // Skip this credit note
-          }
-        }
-
-        const returnedDate = new Date(note.returned_date);
-        const returnedMonth = returnedDate.getMonth();
-        const returnedYear = returnedDate.getFullYear();
-
-        const isSameOrPreviousMonth =
-          (invoiceStartMonth === 0 &&
-            returnedMonth === 11 &&
-            invoiceStartYear - returnedYear === 1) || // Dec -> Jan (year change)
-          (returnedYear === invoiceStartYear &&
-            (invoiceStartMonth - returnedMonth === 1 || 
-             invoiceStartMonth - returnedMonth === 0)); // Same or previous month
-
-        if (!isSameOrPreviousMonth) continue;
-
-        const noteJSON = note.toJSON();
-
-        // Inject productDetails into each credit note item
-        for (const item of noteJSON.items) {
-          const product = await ProductTemplete.findOne({
-            where: {
-              id: item.product_id,
-            },
-          });
-          item.productDetails = product?.toJSON() || null;
-        }
-
-        filteredNotes.push(noteJSON);
-      }
-
-      const challanJSON = challan.toJSON();
-      challanJSON.credit_notes = filteredNotes;
-
-      // Update device_ids and quantity in challan items by subtracting returned ones
-      challanJSON.items = challanJSON.items.map((item) => {
-        let returnedDeviceIds = [];
-
-        filteredNotes.forEach((note) => {
-          note.items.forEach((ri) => {
-            if (ri.product_id === item.product_id) {
-              returnedDeviceIds.push(...ri.device_ids);
-            }
-          });
-        });
-
-        const originalDeviceIds = item.device_ids || [];
-        const updatedDeviceIds = originalDeviceIds.filter(
-          (id) => !returnedDeviceIds.includes(id)
-        );
-
-        return {
-          ...item,
-          device_ids: updatedDeviceIds,
-          quantity: updatedDeviceIds.length,
-        };
-      });
-
-      additionalDeliveryChallans.push(challanJSON);
     }
 
+    // 7. Get peripherals for additional delivery challan items
+    for (const challan of additionalDeliveryChallans) {
+      for (const item of challan.items) {
+        const device_ids = parseJSONSafe(item.device_ids);
+        
+        // Get peripherals for devices delivered before invoice start month
+        const peripheralItems = await getPeripheralsForDevices(
+          item.product_id,
+          device_ids,
+          invoiceStart
+        );
+        
+        item.peripheralItems = peripheralItems;
+      }
+    }
+
+    // 8. Final API response
     const invoiceJSON = invoice.toJSON();
     invoiceJSON.items = updatedItems;
     invoiceJSON.order_table_id = order_table_id;
     invoiceJSON.order_date = order_date;
-    invoiceJSON.credit_notes = formattedCreditNotes;
+    invoiceJSON.credit_notes = filteredCreditNotes;
     invoiceJSON.additional_delivery_challans = additionalDeliveryChallans;
     invoiceJSON.rental_start_date = invoice.rental_start_date;
     invoiceJSON.rental_end_date = invoice.rental_end_date;
@@ -1471,44 +2708,26 @@ export const getCustomerInvoicesByDate = async (req, res) => {
 // Update invoice with full functionality
 export const updateInvoice = async (req, res) => {
   try {
-    const {
-      id
-    } = req.params;
+    const { id } = req.params;
 
-    // Find the existing invoice with proper association aliases
+    // Find the existing invoice with proper associations
     const invoice = await Invoice.findByPk(id, {
-      include: [{
-          model: InvoiceItem,
-          as: 'items' // Make sure this matches your association alias
-        },
-        {
-          model: InvoiceShippingDetail,
-          as: 'shippingDetail' // Make sure this matches your association alias
-        }
+      include: [
+        { model: InvoiceItem, as: 'items' },
+        { model: InvoiceShippingDetail, as: 'shippingDetail' }
       ]
     });
 
-    if (!invoice) {
-      return res.status(404).json({
-        success: false,
-        message: "Invoice not found"
-      });
-    }
-    // Validate required fields
+    if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
     if (!req.body.items || !req.body.items.length) {
-      return res.status(400).json({
-        error: "At least one invoice item is required"
-      });
+      return res.status(400).json({ error: "At least one invoice item is required" });
     }
 
-    // Destructure request body
     const {
       order_id,
       invoice_number,
       invoice_title,
       transaction_type,
-      dc_id,
-      dc_date,
       dispatch_order_number,
       dispatch_order_id,
       invoice_start_date,
@@ -1543,7 +2762,6 @@ export const updateInvoice = async (req, res) => {
       items
     } = req.body;
 
-    // Reuse the same date formatting from create
     const formatDate = (input) => {
       if (!input) return null;
       const dateParts = input.toString().split(/[-/]/);
@@ -1556,10 +2774,18 @@ export const updateInvoice = async (req, res) => {
       return isNaN(new Date(formattedDate).getTime()) ? null : formattedDate;
     };
 
-    const getCurrentTimestamp = () => {
-      const now = new Date();
-      return now.toISOString().replace('T', ' ').slice(0, 19);
-    };
+    const getCurrentTimestamp = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+    // Fetch DeliveryChallan for dc_date and dc_id
+    let dc_date = null;
+    let dc_id = null;
+    if (dispatch_order_id) {
+      const deliveryChallan = await DeliveryChallan.findOne({ where: { dispatch_order_id } });
+      if (deliveryChallan) {
+        dc_date = formatDate(deliveryChallan.dc_date);
+        dc_id = deliveryChallan.id;
+      }
+    }
 
     // Format all dates
     const formattedInvoiceStartDate = formatDate(invoice_start_date);
@@ -1575,47 +2801,26 @@ export const updateInvoice = async (req, res) => {
     const formattedPurchaseOrderDate = formatDate(purchase_order_date);
     const formattedApprovalDate = formatDate(approval_date);
 
-    // Validate critical dates
     if (!formattedInvoiceStartDate || !formattedInvoiceEndDate) {
-      return res.status(400).json({
-        error: "Invalid invoice date range provided"
-      });
+      return res.status(400).json({ error: "Invalid invoice date range provided" });
     }
 
-    // Calculate total days in invoice period
-    const startDate = new Date(formattedInvoiceStartDate);
-    const endDate = new Date(formattedInvoiceEndDate);
-    const totalInvoiceDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-
-    if (totalInvoiceDays <= 0) {
-      return res.status(400).json({
-        error: "Invoice end date must be after start date"
-      });
-    }
-
-    // Get tax rates
-    const tax = await TaxType.findOne({
-      where: {
-        tax_type_name: {
-          [Op.like]: '%GST%'
-        }
-      },
-    });
-
+    // Tax rates
+    const tax = await TaxType.findOne({ where: { tax_type_name: { [Op.like]: '%GST%' } } });
     const taxRate = tax ? tax.percentage : 18;
     const cgstRate = taxRate / 2;
     const sgstRate = taxRate / 2;
 
-    // Update invoice basic information
+    // Update invoice basic info
     await invoice.update({
       order_id,
       invoice_number,
       invoice_title,
       transaction_type,
       dc_id,
+      dc_date,
       dispatch_order_number,
       dispatch_order_id,
-      dc_date,
       invoice_date: formattedInvoiceDate,
       invoice_due_date: formattedInvoiceDueDate,
       invoice_start_date: formattedInvoiceStartDate,
@@ -1650,50 +2855,28 @@ export const updateInvoice = async (req, res) => {
     let invoiceAmount = 0;
     let totalCGST = 0;
     let totalSGST = 0;
-    let totalIGST = 0;
 
-    // First, delete all existing invoice items
-    await InvoiceItem.destroy({
-      where: {
-        invoice_id: invoice.id
-      }
-    });
+    // Delete old invoice items
+    await InvoiceItem.destroy({ where: { invoice_id: invoice.id } });
 
-    // Process each new invoice item
+    // Process new invoice items
     for (const item of items) {
       const product = await ProductTemplete.findByPk(item.product_id);
-      if (!product) {
-        console.warn(`Product not found for ID: ${item.product_id}`);
-        continue;
-      }
-
-      const rentPerMonth = parseFloat(product.rent_price_per_month || 0);
-      const dailyRate = rentPerMonth / 30; // Standard 30-day month
-
-      const prevQty = parseInt(item.previous_quantity || 0);
-      const newQty = parseInt(item.new_quantity || 0);
-      const returnQty = parseInt(item.return_quantity || 0);
-      const months = parseInt(item.rental_duration_months || 0);
-      const days = parseInt(item.rental_duration_days || 0);
+      if (!product) continue;
 
       const unitPrice = parseFloat(item.unit_price || 0);
       const totalPrice = parseFloat(item.total_price || 0);
-
-      // Calculate taxes from totalPrice
       const cgst = parseFloat((totalPrice * cgstRate) / 100);
       const sgst = parseFloat((totalPrice * sgstRate) / 100);
       const totalTax = cgst + sgst;
-      const totalAmount = totalPrice + totalTax;
 
-      // Update totals
       invoiceAmount += totalPrice;
       totalCGST += cgst;
       totalSGST += sgst;
-      // Create invoice item record
+
       await InvoiceItem.create({
         invoice_id: invoice.id,
         order_id: item.order_id || null,
-
         product_id: item.product_id,
         product_name: item.product_name || product.product_name,
         previous_quantity: parseInt(item.previous_quantity || 0),
@@ -1704,7 +2887,7 @@ export const updateInvoice = async (req, res) => {
         sgst: sgst.toFixed(2),
         igst: "0.00",
         total_tax: totalTax.toFixed(2),
-        total_amount: totalAmount.toFixed(2),
+        total_amount: (totalPrice + totalTax).toFixed(2),
         rental_duration_months: parseInt(item.rental_duration_months || 0),
         rental_duration_days: parseInt(item.rental_duration_days || 0),
         new_quantity: parseInt(item.new_quantity || 0),
@@ -1712,32 +2895,25 @@ export const updateInvoice = async (req, res) => {
         device_ids: item.device_ids ? JSON.stringify(item.device_ids) : null,
         new_device_ids: item.new_device_ids || [],
         returned_device_ids: item.returned_device_ids || [],
-        added_date: item.new_quantity && Number(item.new_quantity) !== 0 ?
-          item.added_date ? formatDate(item.added_date) : getCurrentTimestamp() : null,
-        returned_date: item.return_quantity && Number(item.return_quantity) !== 0 ?
-          item.returned_date ? formatDate(item.returned_date) : getCurrentTimestamp() : null,
+        added_date: item.new_quantity && Number(item.new_quantity) !== 0 ? item.added_date ? formatDate(item.added_date) : getCurrentTimestamp() : null,
+        returned_date: item.return_quantity && Number(item.return_quantity) !== 0 ? item.returned_date ? formatDate(item.returned_date) : getCurrentTimestamp() : null,
       });
-
     }
 
-    // Calculate final invoice amounts
     const grandTotal = invoiceAmount + totalCGST + totalSGST;
-
-    // Update invoice with final amounts
     await invoice.update({
       amount: parseFloat(invoiceAmount.toFixed(2)),
       cgst: parseFloat(totalCGST.toFixed(2)),
       sgst: parseFloat(totalSGST.toFixed(2)),
-      igst: parseFloat(totalIGST.toFixed(2)),
+      igst: 0,
       total_tax: parseFloat((totalCGST + totalSGST).toFixed(2)),
       total_amount: parseFloat(grandTotal.toFixed(2)),
     });
 
-    // Handle shipping details update
+    // Update or create shipping details
     if (shippingDetails) {
-      if (invoice.InvoiceShippingDetail) {
-        // Update existing shipping details
-        await invoice.InvoiceShippingDetail.update({
+      if (invoice.shippingDetail) {
+        await invoice.shippingDetail.update({
           consignee_name: shippingDetails.consignee_name || customer_name,
           country: shippingDetails.country || "India",
           state: shippingDetails.state,
@@ -1749,7 +2925,6 @@ export const updateInvoice = async (req, res) => {
           email: shippingDetails.email || email,
         });
       } else {
-        // Create new shipping details if none existed
         await InvoiceShippingDetail.create({
           invoice_id: invoice.id,
           consignee_name: shippingDetails.consignee_name || customer_name,
@@ -1775,7 +2950,7 @@ export const updateInvoice = async (req, res) => {
         subtotal: invoiceAmount.toFixed(2),
         cgst: totalCGST.toFixed(2),
         sgst: totalSGST.toFixed(2),
-        igst: totalIGST.toFixed(2)
+        igst: 0
       }
     });
 
@@ -1788,6 +2963,7 @@ export const updateInvoice = async (req, res) => {
     });
   }
 };
+
 
 
 

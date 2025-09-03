@@ -16,11 +16,17 @@ export default (sequelize, DataTypes) => {
     dispatch_order_status: {
       type: DataTypes.STRING(50)
     },
+    convert_rent_to_sale: {
+      type: DataTypes.STRING(50)
+    },
     dispatch_order_date: {
       type: DataTypes.DATEONLY
     },
-            rental_end_date: DataTypes.DATE,
-
+    rental_end_date: DataTypes.DATE,
+order_sale_date: {
+  type: DataTypes.DATEONLY,
+  allowNull: true
+},
     order_id: {
       type: DataTypes.INTEGER
     },
@@ -87,6 +93,17 @@ export default (sequelize, DataTypes) => {
     regular_dispatch_order: {
       type: DataTypes.BOOLEAN
     },
+    // ✅ NEW COLUMN
+    peripheral_update: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    is_direct_invoice: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
@@ -96,26 +113,33 @@ export default (sequelize, DataTypes) => {
     timestamps: false
   });
 
- DispatchOrder.associate = (models) => {
-  DispatchOrder.hasMany(models.DispatchOrderItem, {
-    foreignKey: 'dispatch_order_id',
-    as: 'items',
-    onDelete: 'CASCADE'
-  });
+  DispatchOrder.associate = (models) => {
+    DispatchOrder.hasMany(models.DispatchOrderItem, {
+      foreignKey: 'dispatch_order_id',
+      as: 'items',
+      onDelete: 'CASCADE'
+    });
 
-  DispatchOrder.belongsTo(models.Contact, {
-    foreignKey: 'customer_code',
-    targetKey: 'id', // Contact.id → DispatchOrder.customer_code
-    as: 'contact'
-  });
+    DispatchOrder.belongsTo(models.Contact, {
+      foreignKey: 'customer_code',
+      targetKey: 'id', // Contact.id → DispatchOrder.customer_code
+      as: 'contact'
+    });
 
-  // 👇 Add this association
-  DispatchOrder.hasMany(models.DeliveryChallan, {
-    foreignKey: 'dispatch_order_id',
-    as: 'delivery_challans',
-    onDelete: 'CASCADE'
-  });
-};
+    // 👇 Add this association
+    DispatchOrder.hasMany(models.DeliveryChallan, {
+      foreignKey: 'dispatch_order_id',
+      as: 'delivery_challans',
+      onDelete: 'CASCADE'
+    });
+
+    DispatchOrder.hasOne(models.OrderAddress, {
+      foreignKey: 'order_id',
+      sourceKey: 'order_id', // match DispatchOrder.order_id → OrderAddress.order_id
+      as: 'order_address'
+    });
+
+  };
 
 
 

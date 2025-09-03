@@ -74,10 +74,12 @@ const { Sequelize } = db;
 
 export const getDeliveryChallansContact = async (req, res) => {
   try {
-    // Fetch distinct customer_code values from DeliveryChallan WHERE type != 'Buy'
+    // Fetch distinct customer_code values from DeliveryChallan
     const challanCustomers = await DeliveryChallan.findAll({
       where: {
-        type: { [Op.ne]: 'Buy' }  // <-- Exclude 'Buy' type
+        type: { [Op.ne]: 'Buy' },   // Exclude type 'Buy'
+        defualt_dc: false,          // Exclude where defualt_dc is true
+        peripheral_update: false    // Exclude where peripheral_update is true
       },
       attributes: [
         [Sequelize.fn('DISTINCT', Sequelize.col('customer_code')), 'customer_code']
@@ -108,6 +110,7 @@ export const getDeliveryChallansContact = async (req, res) => {
     res.status(500).json({ message: 'Error fetching contacts', error });
   }
 };
+
 
 
 // Get all clients where status is 'Active' (and optionally is_active = 1)

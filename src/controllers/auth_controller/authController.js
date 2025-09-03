@@ -59,7 +59,7 @@ export const signin = async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    res.status(200).json({ message: 'Signin successful', token, user: { id: user.id,full_name:user.full_name, email: user.email,} });
+    res.status(200).json({ message: 'Signin successful', token, user: { id: user.id,full_name:user.full_name, email: user.email,image: user.image,} });
 
   } catch (error) {
     res.status(500).json({ message: 'Error signing in', error: error.message });

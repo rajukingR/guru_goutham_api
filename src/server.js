@@ -41,6 +41,8 @@ import assetModificationRoutes from './routes/assetModificationRoutes.js';
 import ramSpecRoutes from './routes/ramSpecRoutes.js'; // Adjust path as needed
 import stateRoutes from './routes/salesRoutes.js';
 import dispatchOrderRoutes from "./routes/dispatchOrderRoutes.js";
+import assembledAssetRoutes from "./routes/assembledAssetRoutes.js";
+import peripheralRoutes from "./routes/peripheralRoutes.js";
 
 
 import {
@@ -134,7 +136,8 @@ app.use('/api/asset-modifications', assetModificationRoutes);
 app.use('/api/ram-specs', ramSpecRoutes);
 app.use('/api/sales-report', stateRoutes);
 app.use("/api/dispatch-orders", dispatchOrderRoutes);
-
+app.use("/api/assembled-assets", assembledAssetRoutes);
+app.use("/api/peripheral-assets", peripheralRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

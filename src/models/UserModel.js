@@ -85,6 +85,10 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    image: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   }, {
     tableName: 'users',
     timestamps: false,

@@ -38,6 +38,13 @@ export default (sequelize, DataTypes) => {
     dc_status: {
       type: DataTypes.STRING,
     },
+    order_sale_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true
+    },
+    convert_rent_to_sale: {
+      type: DataTypes.STRING(50)
+    },
     dealer_reference: {
       type: DataTypes.STRING,
     },
@@ -105,11 +112,54 @@ export default (sequelize, DataTypes) => {
     delivery_person_phone_number: {
       type: DataTypes.STRING,
     },
+    // ✅ NEW COLUMN
+    peripheral_update: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     receiver_name: {
       type: DataTypes.STRING,
     },
     receiver_phone_number: {
       type: DataTypes.STRING,
+    },
+    other_accessory: {
+      type: DataTypes.JSON, // <-- Now supports JSON
+      allowNull: true,
+      defaultValue: {}, // Start with empty object
+    },
+
+    // ✅ NEW COLUMNS
+    mouse: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    cable: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    bag: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    defualt_dc: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    others: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    is_direct_invoice: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
     created_at: {
       type: DataTypes.DATE,

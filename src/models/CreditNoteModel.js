@@ -28,6 +28,19 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING(100), // updated from dc_number
       allowNull: true,
     },
+    // 🔹 Newly added columns
+    collected_person_name: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    collected_person_no: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    vehicle_no: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
     dc_date: {
       type: DataTypes.DATEONLY,
       allowNull: true,

@@ -10,7 +10,6 @@ export const createSupplier = async (req, res) => {
   try {
     const {
       supplier_code,
-      registration_date,
       supplier_name,
       supplier_owner,
       gst_number,
@@ -23,7 +22,6 @@ export const createSupplier = async (req, res) => {
 
     const supplier = await Supplier.create({
       supplier_code,
-      registration_date,
       supplier_name,
       supplier_owner,
       gst_number,

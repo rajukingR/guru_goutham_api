@@ -30,6 +30,14 @@ export default (sequelize, DataTypes) => {
     model: {
       type: DataTypes.STRING(100),
     },
+    assembled_id: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: 'assembled_assets',
+        key: 'id'
+      },
+      allowNull: true
+    },
     pro_model: {
       type: DataTypes.STRING(100),
     },
@@ -113,6 +121,12 @@ export default (sequelize, DataTypes) => {
     purchase_price: {
       type: DataTypes.DECIMAL(10, 2),
     },
+    offer_purchase_price: {
+      type: DataTypes.DECIMAL(10, 2),
+    },
+    rent_to_buy_offer_purchase_price: {
+      type: DataTypes.DECIMAL(10, 2),
+    },
     rent_percent_per_day: {
       type: DataTypes.DECIMAL(5, 2),
     },
@@ -123,6 +137,9 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(5, 2),
     },
     rent_price_per_month: {
+      type: DataTypes.DECIMAL(10, 2),
+    },
+    offer_rent_price_per_month: {
       type: DataTypes.DECIMAL(10, 2),
     },
     rent_percent_6_months: {
@@ -139,54 +156,64 @@ export default (sequelize, DataTypes) => {
     },
 
     // New Hardware Specific Fields
-processor_model: {
-  type: DataTypes.STRING(100),
-},
-processor_speed: {
-  type: DataTypes.STRING(100),
-},
-generation: {
-  type: DataTypes.STRING(50),
-},
-ram_speed: {
-  type: DataTypes.STRING(100),
-},
-ram_slots: {
-  type: DataTypes.STRING(50),
-},
-cabinet: {
-  type: DataTypes.STRING(100),
-},
-motherboard: {
-  type: DataTypes.STRING(100),
-},
-smps: {
-  type: DataTypes.STRING(100),
-},
-capacity: {
-  type: DataTypes.STRING(100),
-},
-speed: {
-  type: DataTypes.STRING(100),
-},
-ramType: {
-  type: DataTypes.STRING(100),
-},
-sizeGb: {
-  type: DataTypes.STRING(100),
-},
-frequencyMhz: {
-  type: DataTypes.STRING(100),
-},
-manufacturer: {
-  type: DataTypes.STRING(100),
-},
-hsn_code: {
-  type: DataTypes.STRING(100),
-},
-display_size: {
-  type: DataTypes.STRING(100),
-},
+    processor_model: {
+      type: DataTypes.STRING(100),
+    },
+    processor_speed: {
+      type: DataTypes.STRING(100),
+    },
+    generation: {
+      type: DataTypes.STRING(50),
+    },
+    ram_speed: {
+      type: DataTypes.STRING(100),
+    },
+    ram_slots: {
+      type: DataTypes.STRING(50),
+    },
+    cabinet: {
+      type: DataTypes.STRING(100),
+    },
+    motherboard: {
+      type: DataTypes.STRING(100),
+    },
+    smps: {
+      type: DataTypes.STRING(100),
+    },
+    capacity: {
+      type: DataTypes.STRING(100),
+    },
+    speed: {
+      type: DataTypes.STRING(100),
+    },
+    ssd_type: {
+      type: DataTypes.STRING(100),
+    },
+    ramType: {
+      type: DataTypes.STRING(100),
+    },
+    sizeGb: {
+      type: DataTypes.STRING(100),
+    },
+
+    frequency_band: {
+      type: DataTypes.STRING(50),
+    },
+    wifi_standard: {
+      type: DataTypes.STRING(100),
+    },
+    frequencyMhz: {
+      type: DataTypes.STRING(100),
+    },
+    manufacturer: {
+      type: DataTypes.STRING(100),
+    },
+    hsn_code: {
+      type: DataTypes.STRING(100),
+    },
+    display_size: {
+      type: DataTypes.STRING(100),
+    },
 
 
     // Control
@@ -195,31 +222,31 @@ display_size: {
       defaultValue: true,
     },
 
-   
- }, {
-  tableName: 'products_templete',
-  timestamps: true, // ✅ enable Sequelize timestamps
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-});
 
-
- ProductTemplete.associate = (models) => {
-  ProductTemplete.hasMany(models.LeadProduct, {
-    foreignKey: 'product_id',
-    as: 'lead_products'
+  }, {
+    tableName: 'products_templete',
+    timestamps: true, // ✅ enable Sequelize timestamps
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
   });
-  ProductTemplete.hasMany(models.GRNItem, {
-  foreignKey: 'product_id',
-  as: 'grn_items'
-});
-ProductTemplete.hasMany(models.OrderItem, {
-  foreignKey: 'product_id',
-  as: 'order_items'
-});
 
-  
-};
+
+  ProductTemplete.associate = (models) => {
+    ProductTemplete.hasMany(models.LeadProduct, {
+      foreignKey: 'product_id',
+      as: 'lead_products'
+    });
+    ProductTemplete.hasMany(models.GRNItem, {
+      foreignKey: 'product_id',
+      as: 'grn_items'
+    });
+    ProductTemplete.hasMany(models.OrderItem, {
+      foreignKey: 'product_id',
+      as: 'order_items'
+    });
+
+
+  };
 
 
   return ProductTemplete;

@@ -14,8 +14,6 @@ export const createQuotation = async (req, res) => {
       quotation_id,
       quotation_title,
       lead_id,
-      // rental_start_date,
-      // rental_end_date,
       quotation_date,
       rental_duration,
       rental_duration_days,
@@ -30,32 +28,44 @@ export const createQuotation = async (req, res) => {
       items
     } = req.body;
 
+    // Create main quotation
     const quotation = await Quotation.create({
       quotation_id,
       quotation_title,
       lead_id,
-      // rental_start_date,
-      // rental_end_date,
       quotation_date,
       rental_duration,
       rental_duration_days,
       transaction_type,
       payment_type,
+      remarks,
       quotation_generated_by,
       status,
       customer_id,
       customer_first_name,
-      customer_last_name
+      customer_last_name,
+      created_at: new Date(),
+      updated_at: new Date()
     });
 
+    // Create quotation items with pricing fields
     if (items && Array.isArray(items)) {
       const itemsWithProductNames = await Promise.all(
         items.map(async (item) => {
           const product = await Product.findByPk(item.product_id);
+
           return {
-            ...item,
             quotation_id: quotation.id,
-            product_name: product ? product.name : null
+            product_id: item.product_id,
+            product_name: product ? product.product_name : null, // assuming column is product_name
+            requested_quantity: item.requested_quantity,
+            quotation_quantity: item.quotation_quantity,
+            purchase_price: item.purchase_price || 0,
+            offer_purchase_price: item.offer_purchase_price || 0,
+            rent_price_per_month: item.rent_price_per_month || 0,
+            offer_rent_price_per_month: item.offer_rent_price_per_month || 0,
+            created_at: new Date(),
+            updated_at: new Date()
           };
         })
       );
@@ -64,17 +74,18 @@ export const createQuotation = async (req, res) => {
     }
 
     res.status(201).json({
-      message: 'Quotation created successfully',
+      message: "Quotation created successfully",
       quotation
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
-      message: 'Error creating quotation',
-      error
+      message: "Error creating quotation",
+      error: error.message
     });
   }
-};;
+};
+
 
 
 // Get all quotations
@@ -221,7 +232,32 @@ export const getQuotationById = async (req, res) => {
       include: [{
         model: QuotationItem,
         as: 'items', // use the same alias as defined in the model
-      }]
+      },
+      {
+          model: Contact,
+          as: 'customer', // This alias must match the one in the association
+          attributes: [
+            'id',
+            'first_name',
+            'last_name',
+            'email',
+            'phone_number',
+            'company_name',
+            'customer_id',
+            'industry',
+            'payment_type',
+            'gst',
+            'pan_no',
+            'owner',
+            'remarks',
+            'status',
+            'created_at',
+            'updated_at',
+            'address'
+          ],
+        },
+    
+    ]
     });
 
     if (!quotation) return res.status(404).json({
@@ -255,16 +291,16 @@ export const updateQuotation = async (req, res) => {
       customer_id,
       customer_first_name,
       customer_last_name,
-      items, // Add items from request body
-      lead_id // Add lead_id from request body
+      items, // includes price fields too
+      lead_id
     } = req.body;
 
     const quotation = await Quotation.findByPk(id);
     if (!quotation) {
-      return res.status(404).json({ message: 'Quotation not found' });
+      return res.status(404).json({ message: "Quotation not found" });
     }
 
-    // Update basic quotation details
+    // Update quotation
     await quotation.update({
       quotation_title,
       quotation_date,
@@ -278,43 +314,46 @@ export const updateQuotation = async (req, res) => {
       customer_id,
       customer_first_name,
       customer_last_name,
-      lead_id, // Update lead_id if changed
-      updated_at: new Date()
+      lead_id,
+      updated_at: new Date(),
     });
 
-    // Handle quotation items updates
+    // Handle items update
     if (items && items.length > 0) {
-      // First, remove all existing quotation items
-      await QuotationItem.destroy({
-        where: { quotation_id: id }
-      });
+      // Remove old items
+      await QuotationItem.destroy({ where: { quotation_id: id } });
 
-      // Then create new quotation items
-      const quotationItems = items.map(item => ({
+      // Insert new items with new columns
+      const quotationItems = items.map((item) => ({
         quotation_id: id,
         product_id: item.product_id,
         product_name: item.product_name,
         requested_quantity: item.requested_quantity,
         quotation_quantity: item.quotation_quantity,
+        purchase_price: item.purchase_price || 0,
+        offer_purchase_price: item.offer_purchase_price || 0,
+        rent_price_per_month: item.rent_price_per_month || 0,
+        offer_rent_price_per_month: item.offer_rent_price_per_month || 0,
         created_at: new Date(),
-        updated_at: new Date()
+        updated_at: new Date(),
       }));
 
       await QuotationItem.bulkCreate(quotationItems);
     }
 
     res.status(200).json({
-      message: 'Quotation updated successfully',
-      quotation
+      message: "Quotation updated successfully",
+      quotation,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
-      message: 'Error updating quotation',
-      error: error.message
+      message: "Error updating quotation",
+      error: error.message,
     });
   }
 };
+
 
 
 // Delete quotation

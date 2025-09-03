@@ -98,16 +98,23 @@ export default (sequelize, DataTypes) => {
     });
 
     AssetId.associate = (models) => {
-        AssetId.belongsTo(models.Invoice, {
-            foreignKey: 'invoice_id',
-            as: 'invoice'
-        });
+  AssetId.belongsTo(models.Invoice, {
+    foreignKey: 'invoice_id',
+    as: 'invoice'
+  });
 
-        AssetId.belongsTo(models.ProductTemplete, {
-            foreignKey: 'product_id',
-            as: 'product'
-        });
-    };
+  AssetId.belongsTo(models.ProductTemplete, {
+    foreignKey: 'product_id',
+    as: 'product'
+  });
+
+  // ✅ Add this
+  AssetId.hasMany(models.AssetIdComponent, {
+    foreignKey: 'asset_modification_id',
+    as: 'components'
+  });
+};
+
 
     return AssetId;
 };

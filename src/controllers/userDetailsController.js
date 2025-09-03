@@ -29,12 +29,11 @@ export const createUser = async (req, res) => {
       is_active
     } = req.body;
 
+    // Image upload
+    const image = req.file ? req.file.filename : null;
+
     // Check if email already exists
-    const existingEmail = await User.findOne({
-      where: {
-        email
-      }
-    });
+    const existingEmail = await User.findOne({ where: { email } });
     if (existingEmail) {
       return res.status(400).json({
         message: "Email already exists. Please use a different email."
@@ -61,6 +60,7 @@ export const createUser = async (req, res) => {
       city,
       landmark,
       street,
+      image,
       is_active: is_active !== undefined ? is_active : true,
     });
 
@@ -117,9 +117,7 @@ export const getUserById = async (req, res) => {
 // Update user
 export const updateUser = async (req, res) => {
   try {
-    const {
-      id
-    } = req.params;
+    const { id } = req.params;
     const {
       full_name,
       email,
@@ -141,9 +139,12 @@ export const updateUser = async (req, res) => {
     } = req.body;
 
     const user = await User.findByPk(id);
-    if (!user) return res.status(404).json({
-      message: "User not found"
-    });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Image upload
+    const image = req.file ? req.file.filename : user.image;
 
     // Check if email is already in use by another user
     const existingEmail = await User.findOne({
@@ -161,10 +162,9 @@ export const updateUser = async (req, res) => {
     }
 
     // Hash the new password if provided
-    let updatedPassword = user.password_hash;
-    if (password) {
-      updatedPassword = await bcrypt.hash(password, 10);
-    }
+    const updatedPassword = password
+      ? await bcrypt.hash(password, 10)
+      : user.password_hash;
 
     await user.update({
       full_name,
@@ -183,6 +183,7 @@ export const updateUser = async (req, res) => {
       city,
       landmark,
       street,
+      image,
       is_active: is_active !== undefined ? is_active : user.is_active,
       updated_at: new Date()
     });

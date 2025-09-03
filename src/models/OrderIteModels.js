@@ -23,6 +23,20 @@ export default (sequelize, DataTypes) => {
           this.setDataValue('device_ids', JSON.stringify(value));
         },
       },
+      // Price Details
+      purchase_price: {
+        type: DataTypes.DECIMAL(10, 2),
+      },
+      offer_purchase_price: {
+        type: DataTypes.DECIMAL(10, 2),
+      },
+      // Price Details
+      rent_price_per_month: {
+        type: DataTypes.DECIMAL(10, 2),
+      },
+      offer_rent_price_per_month: {
+        type: DataTypes.DECIMAL(10, 2),
+      },
     }, {
       tableName: 'order_products',
       timestamps: false,

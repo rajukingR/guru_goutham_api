@@ -9,21 +9,14 @@ import {
   deleteGoodsReturnNote
 } from "../controllers/GoodsReturnNoteController.js";
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
-// Create GRN
-router.post("/create", createGoodsReturnNote);
-
-// Get all GRNs
-router.get("/", getAllGoodsReturnNotes);
-
-// Get GRN by ID
-router.get("/:id", getGoodsReturnNoteById);
-
-// Update GRN by ID
-router.put("/:id", updateGoodsReturnNote);
-
-// Delete GRN by ID
-router.delete("/:id", deleteGoodsReturnNote);
+router.post("/create", authMiddleware, createGoodsReturnNote);
+router.get("/", authMiddleware, getAllGoodsReturnNotes);
+router.get("/:id", authMiddleware, getGoodsReturnNoteById);
+router.put("/:id", authMiddleware, updateGoodsReturnNote);
+router.delete("/:id", authMiddleware, deleteGoodsReturnNote);
 
 export default router;

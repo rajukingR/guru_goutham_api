@@ -5,6 +5,8 @@ import cors from 'cors';
 import morgan from 'morgan';
 import helmet from 'helmet';
 import db from './config/db.js';
+import cron from 'node-cron';
+
 import parentRouter from './routes/parentRouter.js';
 import userRoutes from './routes/userDetailsRoutes.js';
 import productRoutes from './routes/productRoutes.js';
@@ -30,7 +32,6 @@ import brandRoutes from './routes/brandRoutes.js';
 import stockLocationRoutes from './routes/stockLocationRoutes.js';
 import roleRoutes from './routes/roleRoutes.js';
 import taxListRoutes from './routes/taxListRoutes.js';
-import branchRoutes from "./routes/branchRoutes.js";
 import GoodsReturnNoteRoutes from "./routes/GoodsReturnNoteRoutes.js";
 import productServiceRoutes from './routes/ProductServiceRoutes.js';
 import CreditNoteRoutes from './routes/CreditNoteRoutes.js';
@@ -43,7 +44,11 @@ import stateRoutes from './routes/salesRoutes.js';
 import dispatchOrderRoutes from "./routes/dispatchOrderRoutes.js";
 import assembledAssetRoutes from "./routes/assembledAssetRoutes.js";
 import peripheralRoutes from "./routes/peripheralRoutes.js";
-
+import courierChargesRoutes from './routes/courierChargesRoutes.js';
+import serviceChargesRoutes from "./routes/serviceChargesRoutes.js";
+import assetSwapRoutes from "./routes/assetSwapRoutes.js";
+import branchesRoutes from "./routes/BranchesRoutes.js";
+import createBackup from "../src/utils/dbBackups.js";
 
 import {
   fileURLToPath
@@ -126,7 +131,7 @@ app.use('/api/product-brands', brandRoutes);
 app.use('/api/stock-location', stockLocationRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/tax-list', taxListRoutes);
-app.use("/api/branches", branchRoutes);
+app.use("/api/branches", branchesRoutes);
 app.use("/api/goods-return-notes", grnRoutes);
 app.use('/api/product-services', productServiceRoutes);
 app.use('/api/credit-notes', CreditNoteRoutes);
@@ -138,6 +143,24 @@ app.use('/api/sales-report', stateRoutes);
 app.use("/api/dispatch-orders", dispatchOrderRoutes);
 app.use("/api/assembled-assets", assembledAssetRoutes);
 app.use("/api/peripheral-assets", peripheralRoutes);
+app.use('/api/courier-charges', courierChargesRoutes);
+app.use("/api/service-charges", serviceChargesRoutes);
+app.use("/api/asset-swaps", assetSwapRoutes);
+
+
+// EVEVRYDAY BACKUP CODE 
+// cron.schedule('0 0 * * *', () => {
+//   console.log('⏰ Running daily midnight DB backup...');
+//   createBackup();
+// });
+
+
+// EVERY MINUTE BACKUP CODE
+// cron.schedule('* * * * *', () => {
+//   console.log('⏰ Running DB backup every minute...');
+//   createBackup();
+// });
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

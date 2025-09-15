@@ -53,7 +53,7 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
-                rental_end_date: DataTypes.DATE,
+    rental_end_date: DataTypes.DATE,
 
     customer_name: {
       type: DataTypes.STRING,
@@ -111,10 +111,21 @@ export default (sequelize, DataTypes) => {
       as: 'items',
     });
     CreditNote.belongsTo(models.Contact, {
-  foreignKey: 'customer_id',
-  targetKey: 'id',
-  as: 'customer',
-});
+      foreignKey: 'customer_id',
+      targetKey: 'id',
+      as: 'customer',
+    });
+
+    CreditNote.belongsTo(models.Invoice, {
+      foreignKey: "dispatch_order_id",
+      targetKey: "dispatch_order_id",
+      as: "invoice",
+    });
+
+    CreditNote.hasOne(models.AssetSwap, {
+      foreignKey: 'credit_note_id',
+      as: 'asset_swap'
+    });
 
 
     // Optional: Add association with DispatchOrder if needed

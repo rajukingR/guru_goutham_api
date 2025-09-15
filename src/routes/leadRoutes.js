@@ -12,12 +12,12 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.post('/create', createLead);
-router.get('/', getAllLeads);
-router.get('/active-leads', getAllLeadsActived);
+router.post('/create', authMiddleware, createLead);
+router.get('/', authMiddleware, getAllLeads);
+router.get('/active-leads', authMiddleware, getAllLeadsActived);
 
-router.get('/:id', getLeadById);
-router.put('/:id', updateLead);
-router.delete('/:id', deleteLead);
+router.get('/:id', authMiddleware, getLeadById);
+router.put('/:id', authMiddleware, updateLead);
+router.delete('/:id', authMiddleware, deleteLead);
 
 export default router;

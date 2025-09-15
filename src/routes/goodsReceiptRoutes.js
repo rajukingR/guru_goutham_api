@@ -12,11 +12,11 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.post('/create', createGoodsReceipt);
-router.get('/', getAllGoodsReceipts);
-router.get('/approved-receipt-products', getApprovedProductSummary);
-router.get('/:id', getGoodsReceiptById);
-router.put('/:id', updateGoodsReceipt);
-router.delete('/:id', deleteGoodsReceipt);
+router.post('/create', authMiddleware, createGoodsReceipt);
+router.get('/', authMiddleware, getAllGoodsReceipts);
+router.get('/approved-receipt-products', authMiddleware, getApprovedProductSummary);
+router.get('/:id', authMiddleware, getGoodsReceiptById);
+router.put('/:id', authMiddleware, updateGoodsReceipt);
+router.delete('/:id', authMiddleware, deleteGoodsReceipt);
 
 export default router;

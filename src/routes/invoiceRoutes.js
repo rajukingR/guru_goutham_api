@@ -18,16 +18,16 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 const router = express.Router();
 
 // Invoice Routes
-router.post("/create", createInvoice);
-router.get("/", getAllInvoices);
-router.get("/approved-invoices", getAllApprovedInvoices );
-router.get("/:id", getInvoiceById);
-router.get("/invoices/customer/:customer_id", getInvoicesByCustomerId);
-router.get("/get-customer-id/:id", getInvoicesByInvoiceId);
-router.get("/customer/:customer_id", getCustomerInvoices );
-router.get("/customer/:customer_id/:", getCustomerInvoices );
-router.get("/customer/:customer_id/:invoice_date", getCustomerInvoicesByDate);
-router.put("/:id", updateInvoice);
-router.delete("/:id", deleteInvoice);
+router.post("/create", authMiddleware, createInvoice);
+router.get("/",authMiddleware, getAllInvoices);
+router.get("/approved-invoices", authMiddleware, getAllApprovedInvoices );
+router.get("/:id", authMiddleware, getInvoiceById);
+router.get("/invoices/customer/:customer_id", authMiddleware, getInvoicesByCustomerId);
+router.get("/get-customer-id/:id", authMiddleware, getInvoicesByInvoiceId);
+router.get("/customer/:customer_id", authMiddleware, getCustomerInvoices );
+router.get("/customer/:customer_id/:", authMiddleware, getCustomerInvoices );
+router.get("/customer/:customer_id/:invoice_date", authMiddleware, getCustomerInvoicesByDate);
+router.put("/:id", authMiddleware, updateInvoice);
+router.delete("/:id", authMiddleware, deleteInvoice);
 
 export default router;

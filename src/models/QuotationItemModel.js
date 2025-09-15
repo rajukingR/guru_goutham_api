@@ -33,6 +33,10 @@ export default (sequelize, DataTypes) => {
     offer_rent_price_per_month: {
       type: DataTypes.DECIMAL(10, 2),
     },
+    device_ids: {
+        type: DataTypes.JSON,
+        defaultValue: [],
+      },
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
@@ -53,11 +57,15 @@ export default (sequelize, DataTypes) => {
       foreignKey: 'quotation_id',
       as: 'quotation',
     });
+    QuotationItem.belongsTo(models.ProductTemplete, {
+      foreignKey: 'product_id',
+      as: 'product',
+    });
     QuotationItem.hasMany(models.GoodsReceiptItem, {
-  foreignKey: 'product_id',
-  sourceKey: 'product_id',
-  as: 'goodsReceiptItems',
-});
+      foreignKey: 'product_id',
+      sourceKey: 'product_id',
+      as: 'goodsReceiptItems',
+    });
 
   };
 

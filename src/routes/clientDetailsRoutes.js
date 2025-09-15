@@ -9,21 +9,14 @@ import {
   deleteClient
 } from '../controllers/ClientDetailsController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
-// POST /clients - Create new client
-router.post('/create', createClient);
-
-// GET /clients - Get all clients
-router.get('/', getAllClients);
-
-// GET /clients/:id - Get client by ID
-router.get('/:id', getClientById);
-
-// PUT /clients/:id - Update client by ID
-router.put('/:id', updateClient);
-
-// DELETE /clients/:id - Delete client by ID
-router.delete('/:id', deleteClient);
+router.post('/create', authMiddleware, createClient);
+router.get('/', authMiddleware, getAllClients);
+router.get('/:id', authMiddleware, getClientById);
+router.put('/:id', authMiddleware, updateClient);
+router.delete('/:id', authMiddleware, deleteClient);
 
 export default router;

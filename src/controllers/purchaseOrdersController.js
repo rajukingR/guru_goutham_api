@@ -142,6 +142,7 @@ export const getApprovedPurchaseOrders = async (req, res) => {
           ]
         }
       ],
+      order: [['id', 'DESC']],
     });
 
     if (!orders || orders.length === 0) {

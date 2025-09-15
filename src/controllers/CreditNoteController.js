@@ -3,8 +3,12 @@ import {
   Op
 } from 'sequelize';
 
+
+import { Sequelize } from "sequelize";
+
 const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
+const Invoice = db.Invoice;
 const InvoiceItem = db.InvoiceItem;
 const Contact = db.Contact;
 const ProductTemplete = db.ProductTemplete;
@@ -109,22 +113,40 @@ export const createCreditNote = async (req, res) => {
 export const getAllCreditNotes = async (req, res) => {
   try {
     const notes = await CreditNote.findAll({
-      include: [{
-        model: CreditNoteItem,
-        as: 'items'
-      }],
-      order: [
-        ['createdAt', 'DESC']
-      ] // or use 'id' if preferred
+      include: [
+        {
+          model: CreditNoteItem,
+          as: "items",
+        },
+        {
+          model: Invoice,
+          as: "invoice", // make sure you defined this association
+          required: false,
+          where: {
+            dispatch_order_id: Sequelize.col("CreditNote.dispatch_order_id"),
+            invoice_start_date: {
+              [Op.eq]: Sequelize.literal(`(
+                SELECT MIN(inv.invoice_start_date)
+                FROM invoices AS inv
+                WHERE inv.dispatch_order_id = CreditNote.dispatch_order_id
+              )`),
+            },
+          },
+          attributes: ["id", "dispatch_order_id", "invoice_start_date"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
     });
+
     res.status(200).json(notes);
   } catch (error) {
     res.status(500).json({
-      error: 'Failed to fetch credit notes',
+      error: "Failed to fetch credit notes",
       details: error.message,
     });
   }
 };
+
 
 
 

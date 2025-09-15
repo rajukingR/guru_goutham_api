@@ -29,12 +29,22 @@ export const createAssembledAsset = async (req, res) => {
       is_active = true
     } = assembledData;
 
+    // ✅ Step 0: Check if parent_asset_id already exists
+    const existingAsset = await AssembledAsset.findOne({
+      where: { parent_asset_id }
+    });
+
+    if (existingAsset) {
+      return res.status(400).json({
+        message: `Assembled Asset with parent_asset_id "${parent_asset_id}" already exists.`,
+      });
+    }
+
     // Step 1: Create AssembledAsset
     const assembledAsset = await AssembledAsset.create({
       assembled_name,
       parent_asset_id,
-      product_image: file?.filename || '', // ✅ Save image filename here
-
+      product_image: file?.filename || '', // ✅ Save image filename
       is_active
     });
 
@@ -42,46 +52,45 @@ export const createAssembledAsset = async (req, res) => {
     const componentsData = [];
 
     for (const [componentType, value] of Object.entries(components)) {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      if (item.asset_id?.trim()) {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item.asset_id?.trim()) {
+            componentsData.push({
+              assembled_id: assembledAsset.id,
+              component_type: componentType,
+              ...item,
+              product_id: item.product_id ? parseInt(item.product_id) : null,
+              ...(componentType === 'wifi' && {
+                frequency_band: item.frequency_band || '',
+                wifi_standard: item.wifi_standard || ''
+              }),
+            });
+          }
+        }
+      } else if (value?.asset_id?.trim()) {
         componentsData.push({
           assembled_id: assembledAsset.id,
           component_type: componentType,
-          ...item,
-          product_id: item.product_id ? parseInt(item.product_id) : null,
+          ...value,
+          product_id: value.product_id ? parseInt(value.product_id) : null,
           ...(componentType === 'wifi' && {
-            frequency_band: item.frequency_band || '',
-            wifi_standard: item.wifi_standard || ''
+            frequency_band: value.frequency_band || '',
+            wifi_standard: value.wifi_standard || ''
           }),
         });
       }
     }
-  } else if (value?.asset_id?.trim()) {
-    componentsData.push({
-      assembled_id: assembledAsset.id,
-      component_type: componentType,
-      ...value,
-      product_id: value.product_id ? parseInt(value.product_id) : null,
-      ...(componentType === 'wifi' && {
-        frequency_band: value.frequency_band || '',
-        wifi_standard: value.wifi_standard || ''
-      }),
-    });
-  }
-}
-
 
     if (componentsData.length > 0) {
       await AssembledComponent.bulkCreate(componentsData);
     }
 
-    // Step 3: Calculate purchase price and rent price per month with counts
+    // Step 3: Calculate prices
     const productCountMap = {};
     componentsData.forEach((comp) => {
       if (comp.product_id) {
         const id = parseInt(comp.product_id);
-        productCountMap[id] = (productCountMap[id] || 0) + 1; // count duplicates
+        productCountMap[id] = (productCountMap[id] || 0) + 1;
       }
     });
 
@@ -99,39 +108,39 @@ export const createAssembledAsset = async (req, res) => {
         const purchasePrice = parseFloat(product.purchase_price || 0);
         const rentPrice = parseFloat(product.rent_price_per_month || 0);
 
-        totalPurchasePrice += purchasePrice * count;   // ✅ multiply by count
-        totalPerMonthPrice += rentPrice * count;       // ✅ multiply by count
+        totalPurchasePrice += purchasePrice * count;
+        totalPerMonthPrice += rentPrice * count;
       });
     }
 
-// Step 4: Create ProductTemplete
-const productTempleteData = {
-  product_category: "Assembled PC",
-  product_id: generateRandomProductId(),
-  assembled_id: assembledAsset.id,
-  product_name: assembled_name,
-  purchase_price: totalPurchasePrice,
-  rent_price_per_month: totalPerMonthPrice, // ✅ Include this
-  brand: 'Default Brand',
-  grade: 'Default Grade',
-  model: assembled_name,
-  processor: components?.processor?.model || '',
-  ram: components?.ram?.[0]?.size || '',
-  ramType: components?.ram?.[0]?.type || '',
-  storage: components?.storage?.[0]?.size || '',
-  disk_type: components?.storage?.[0]?.type || '',
-  ssd_type: components?.storage?.[0]?.type === 'SSD' ? components.storage[0].model : '',
-  smps: components?.smps?.model || '',
-  capacity: components?.smps?.wattage || '',
-  wifi_standard: components?.wifi?.wifi_standard || '',
-  frequency_band: components?.wifi?.frequency_band || '',
-  graphics: components?.gpu?.model || '',
-  os: components?.os || '',
-  is_active: true,
-  product_image: file?.filename || '',
-  created_at: new Date(),
-  updated_at: new Date(),
-};
+    // Step 4: Create ProductTemplete
+    const productTempleteData = {
+      product_category: "Assembled PC",
+      product_id: generateRandomProductId(),
+      assembled_id: assembledAsset.id,
+      product_name: assembled_name,
+      purchase_price: totalPurchasePrice,
+      rent_price_per_month: totalPerMonthPrice,
+      brand: 'Default Brand',
+      grade: 'Default Grade',
+      model: assembled_name,
+      processor: components?.processor?.model || '',
+      ram: components?.ram?.[0]?.size || '',
+      ramType: components?.ram?.[0]?.type || '',
+      storage: components?.storage?.[0]?.size || '',
+      disk_type: components?.storage?.[0]?.type || '',
+      ssd_type: components?.storage?.[0]?.type === 'SSD' ? components.storage[0].model : '',
+      smps: components?.smps?.model || '',
+      capacity: components?.smps?.wattage || '',
+      wifi_standard: components?.wifi?.wifi_standard || '',
+      frequency_band: components?.wifi?.frequency_band || '',
+      graphics: components?.gpu?.model || '',
+      os: components?.os || '',
+      is_active: true,
+      product_image: file?.filename || '',
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
 
     await ProductTemplete.create(productTempleteData);
 
@@ -144,10 +153,11 @@ const productTempleteData = {
     console.error("Create failed:", error);
     res.status(500).json({
       message: "Create failed",
-      error
+      error: error.message || error
     });
   }
 };
+
 
 
 
@@ -218,6 +228,20 @@ export const updateAssembledAsset = async (req, res) => {
       components,
       is_active = true,
     } = assembledData;
+
+    // ✅ Step 0: Check for duplicate parent_asset_id (excluding current asset)
+    const duplicateAsset = await AssembledAsset.findOne({
+      where: {
+        parent_asset_id,
+        id: { [Op.ne]: id }, // exclude the current record
+      },
+    });
+
+    if (duplicateAsset) {
+      return res.status(400).json({
+        message: `Another Assembled Asset with parent_asset_id "${parent_asset_id}" already exists.`,
+      });
+    }
 
     // Step 1: Find AssembledAsset
     const assembledAsset = await AssembledAsset.findByPk(id);
@@ -299,7 +323,7 @@ export const updateAssembledAsset = async (req, res) => {
       },
     });
 
-    // Step 4: Recalculate purchase & rent prices (with counts)
+    // Step 4: Recalculate purchase & rent prices
     const productCounts = componentsData.reduce((acc, comp) => {
       if (comp.product_id) {
         acc[comp.product_id] = (acc[comp.product_id] || 0) + 1;
@@ -369,6 +393,7 @@ export const updateAssembledAsset = async (req, res) => {
     });
   }
 };
+
 
 
 

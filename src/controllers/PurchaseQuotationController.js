@@ -74,6 +74,7 @@ export const getApprovedPurchaseQuotations = async (req, res) => {
           attributes: ['supplier_name'],
         },
       ],
+      order: [['id', 'DESC']],
     });
 
     if (!quotations || quotations.length === 0) {

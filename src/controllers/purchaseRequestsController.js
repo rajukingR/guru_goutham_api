@@ -131,7 +131,8 @@ export const getApprovedPurchaseRequests = async (req, res) => {
             }
           ]
         }
-      ]
+      ],
+      order: [['id', 'DESC']]  // ✅ Order by ID descending
     });
 
     const formatted = purchaseRequests.map(request => {
@@ -163,6 +164,7 @@ export const getApprovedPurchaseRequests = async (req, res) => {
     res.status(500).json({ message: 'Error fetching approved purchase requests', error });
   }
 };
+
 
 export const getPurchaseRequestById = async (req, res) => {
   try {

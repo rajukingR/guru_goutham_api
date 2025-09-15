@@ -14,12 +14,12 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/create", createContact);
-router.get("/", getAllContacts);
-router.get("/delivered-contacts", getDeliveryChallansContact);
-router.get('/active-contacts', getAllContactsActived);
-router.get("/:id", getContactById);
-router.put("/:id", updateContact);
-router.delete("/:id", deleteContact);
+router.post("/create", authMiddleware, createContact);
+router.get("/", authMiddleware, getAllContacts);
+router.get("/delivered-contacts", authMiddleware, getDeliveryChallansContact);
+router.get('/active-contacts', authMiddleware, getAllContactsActived);
+router.get("/:id", authMiddleware, getContactById);
+router.put("/:id", authMiddleware, updateContact);
+router.delete("/:id", authMiddleware, deleteContact);
 
 export default router;

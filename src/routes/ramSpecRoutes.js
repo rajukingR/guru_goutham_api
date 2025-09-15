@@ -7,11 +7,13 @@ import {
   deleteRamSpec,
 } from '../controllers/ramSpecController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
-router.post('/create', createRamSpec);
-router.get('/', getAllRamSpecs);
-router.get('/:id', getRamSpecById);
-router.put('/:id', updateRamSpec);
-router.delete('/:id', deleteRamSpec);
+router.post('/create', authMiddleware, createRamSpec);
+router.get('/', authMiddleware, getAllRamSpecs);
+router.get('/:id', authMiddleware, getRamSpecById);
+router.put('/:id', authMiddleware, updateRamSpec);
+router.delete('/:id', authMiddleware, deleteRamSpec);
 
 export default router;

@@ -7,21 +7,14 @@ import {
   deleteProductService
 } from '../controllers/ProductServiceController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
-// Create a new product/service
-router.post('/create', createProductService);
-
-// Get all products/services
-router.get('/', getAllProductServices);
-
-// Get a single product/service by ID
-router.get('/:id', getProductServiceById);
-
-// Update a product/service by ID
-router.put('/:id', updateProductService);
-
-// Delete a product/service by ID
-router.delete('/:id', deleteProductService);
+router.post('/create', authMiddleware, createProductService);
+router.get('/', authMiddleware, getAllProductServices);
+router.get('/:id', authMiddleware, getProductServiceById);
+router.put('/:id', authMiddleware, updateProductService);
+router.delete('/:id', authMiddleware, deleteProductService);
 
 export default router;

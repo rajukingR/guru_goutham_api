@@ -37,7 +37,7 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true
     },
-   
+
     payment_type: {
       type: DataTypes.ENUM('Prepaid', 'Approved', 'Postpaid'),
       defaultValue: 'Prepaid',
@@ -84,12 +84,23 @@ export default (sequelize, DataTypes) => {
   });
 
   Contact.associate = (models) => {
-  Contact.hasMany(models.DispatchOrder, {
-    foreignKey: 'customer_code',
-    sourceKey: 'id',
-    as: 'dispatch_orders'
-  });
-};
+    Contact.hasMany(models.DispatchOrder, {
+      foreignKey: 'customer_code',
+      sourceKey: 'id',
+      as: 'dispatch_orders'
+    });
+
+    Contact.hasMany(models.CourierCharges, {
+      foreignKey: 'customer_id',
+      sourceKey: 'id',
+      as: 'courier_charges',
+    });
+    Contact.hasMany(models.ServiceCharges, {
+      foreignKey: 'customer_id',
+      sourceKey: 'id',
+      as: 'service_charges',
+    });
+  };
 
 
   return Contact;

@@ -1,6 +1,11 @@
-// src/models/BranchModel.js
+// src/models/BranchesModels.js
 export default (sequelize, DataTypes) => {
-  const Branch = sequelize.define("Branch", {
+  const BranchesModels = sequelize.define("BranchesModels", {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true
+    },
     branch_code: {
       type: DataTypes.STRING,
       allowNull: false
@@ -30,10 +35,10 @@ export default (sequelize, DataTypes) => {
       defaultValue: true,
     }
   }, {
-    tableName: "branches",
+    tableName: "branch",
     timestamps: true,
     underscored: true,
   });
 
-  return Branch;
+  return BranchesModels;
 };

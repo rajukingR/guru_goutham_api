@@ -11,10 +11,10 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.post('/create', createTaxType);
-router.get('/', getAllTaxTypes);
-router.get('/:id', getTaxTypeById);
-router.put('/:id', updateTaxType);
-router.delete('/:id', deleteTaxType);
+router.post('/create', authMiddleware, createTaxType);
+router.get('/', authMiddleware, getAllTaxTypes);
+router.get('/:id', authMiddleware, getTaxTypeById);
+router.put('/:id', authMiddleware, updateTaxType);
+router.delete('/:id', authMiddleware, deleteTaxType);
 
 export default router;

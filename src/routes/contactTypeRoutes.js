@@ -11,10 +11,10 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.post('/create', createContactType);
-router.get('/', getAllContactTypes);
-router.get('/:id', getContactTypeById);
-router.put('/:id', updateContactType);
-router.delete('/:id', deleteContactType);
+router.post('/create', authMiddleware, createContactType);
+router.get('/', authMiddleware, getAllContactTypes);
+router.get('/:id', authMiddleware, getContactTypeById);
+router.put('/:id', authMiddleware, updateContactType);
+router.delete('/:id', authMiddleware, deleteContactType);
 
 export default router;

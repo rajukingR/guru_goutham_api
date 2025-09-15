@@ -16,6 +16,7 @@ const {
 
 const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
+const AssetSwap = db.AssetSwap;
 
 // Create Delivery Challan 
 export const createDeliveryChallan = async (req, res) => {
@@ -106,7 +107,7 @@ export const createDeliveryChallan = async (req, res) => {
       remarks,
       dc_file,
       type,
-      payment_type: type === "Buy" ? type : "Rent",
+      payment_type,
       regular_dc,
       industry,
       shipping_ordered_by,
@@ -302,68 +303,64 @@ export const getAllDeliveryChallanDelivered = async (req, res) => {
 
 
 // Get Delivery Challans by Customer Code
+// Get Delivery Challans by Customer Code
 export const getDeliveryChallansByCustomerCode = async (req, res) => {
-  const {
-    customer_code
-  } = req.params;
+  const { customer_code } = req.params;
 
-  // Helper to safely parse device_ids
+  // Helper: safely parse device_ids
   function parseDeviceIds(deviceIdsRaw) {
     if (!deviceIdsRaw) return [];
     try {
-      const parsed = typeof deviceIdsRaw === 'string' ? JSON.parse(deviceIdsRaw) : deviceIdsRaw;
+      const parsed = typeof deviceIdsRaw === "string" ? JSON.parse(deviceIdsRaw) : deviceIdsRaw;
       return Array.isArray(parsed) ? parsed : [];
     } catch (err) {
-      console.warn('Invalid device_ids JSON in credit note:', deviceIdsRaw);
+      console.warn("Invalid device_ids JSON:", deviceIdsRaw);
       return [];
     }
   }
 
   try {
-    // 1. Fetch delivery challans with items, filter order_sale_date != null
+    // 1. Fetch Delivery Challans (with items)
     let deliveryChallans = await DeliveryChallan.findAll({
-      where: {
-        customer_code,
-        order_sale_date: {
-          [Op.ne]: null
-        } // ✅ only challans where order_sale_date is NOT null
-      },
-      include: [{
-        model: DeliveryChallanItem,
-        as: 'items',
-      }],
-      order: [
-        ['created_at', 'DESC']
-      ]
+      where: { customer_code },
+      include: [{ model: DeliveryChallanItem, as: "items" }],
+      order: [["created_at", "DESC"]],
     });
 
     // 2. Filter out challans where peripheral_update = true
-    deliveryChallans = deliveryChallans.filter(dc => !dc.peripheral_update);
+    deliveryChallans = deliveryChallans.filter((dc) => !dc.peripheral_update);
 
-    // 3. Get all dispatch_order_ids
-    const dispatchOrderIds = deliveryChallans.map(dc => dc.dispatch_order_id);
+    // 3. Collect dispatch_order_ids
+    const dispatchOrderIds = deliveryChallans.map((dc) => dc.dispatch_order_id);
 
-    // 4. Fetch related credit notes and their items
+    // 4. Fetch Credit Notes (returns)
     const creditNotes = await CreditNote.findAll({
-      where: {
-        dispatch_order_id: dispatchOrderIds
-      },
-      include: [{
-        model: CreditNoteItem,
-        as: 'items'
-      }]
+      where: { dispatch_order_id: dispatchOrderIds },
+      include: [{ model: CreditNoteItem, as: "items" }],
     });
 
-    // 5. Build credit note item map per dispatch_order_id
     const creditNoteMap = {};
-    creditNotes.forEach(cn => {
+    creditNotes.forEach((cn) => {
       if (!creditNoteMap[cn.dispatch_order_id]) {
         creditNoteMap[cn.dispatch_order_id] = [];
       }
       creditNoteMap[cn.dispatch_order_id].push(...(cn.items || []));
     });
 
-    // 6. Mutate each deliveryChallanItem's quantity & device_ids
+    // 5. Fetch Asset Swaps (swapped-out devices)
+    const assetSwaps = await AssetSwap.findAll({
+      where: { swapped_on: { [Op.ne]: null } }, // only valid swaps
+      raw: true,
+    });
+
+    // Build a product_id → swappedIds map
+    const swappedMap = {};
+    for (const swap of assetSwaps) {
+      if (!swappedMap[swap.product_id]) swappedMap[swap.product_id] = [];
+      swappedMap[swap.product_id].push(swap.asset_id);
+    }
+
+    // 6. Mutate challan items
     for (const challan of deliveryChallans) {
       const creditItems = creditNoteMap[challan.dispatch_order_id] || [];
 
@@ -371,17 +368,18 @@ export const getDeliveryChallansByCustomerCode = async (req, res) => {
         const originalDeviceIds = parseDeviceIds(item.device_ids);
         let updatedDeviceIds = [...originalDeviceIds];
 
-        const matchingReturns = creditItems.filter(
-          ci => ci.product_id === item.product_id
-        );
-
+        // Subtract returned devices (Credit Notes)
+        const matchingReturns = creditItems.filter((ci) => ci.product_id === item.product_id);
         for (const ret of matchingReturns) {
           const returnedIds = parseDeviceIds(ret.device_ids);
-          // Remove returned device_ids from current device_ids
-          updatedDeviceIds = updatedDeviceIds.filter(id => !returnedIds.includes(id));
+          updatedDeviceIds = updatedDeviceIds.filter((id) => !returnedIds.includes(id));
         }
 
-        // Set the filtered device_ids and updated quantity
+        // Subtract swapped devices (AssetSwaps)
+        const swappedIds = swappedMap[item.product_id] || [];
+        updatedDeviceIds = updatedDeviceIds.filter((id) => !swappedIds.includes(id));
+
+        // Final update
         item.device_ids = updatedDeviceIds;
         item.quantity = updatedDeviceIds.length;
       }
@@ -389,10 +387,10 @@ export const getDeliveryChallansByCustomerCode = async (req, res) => {
 
     res.status(200).json(deliveryChallans);
   } catch (error) {
-    console.error('Error fetching delivery challans by customer_code:', error);
+    console.error("Error fetching delivery challans by customer_code:", error);
     res.status(500).json({
-      message: 'Error fetching delivery challans',
-      error
+      message: "Error fetching delivery challans",
+      error,
     });
   }
 };
@@ -400,10 +398,9 @@ export const getDeliveryChallansByCustomerCode = async (req, res) => {
 
 
 
+
 export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
-  const {
-    customer_code
-  } = req.params;
+  const { customer_code } = req.params;
 
   function parseDeviceIds(deviceIdsRaw) {
     if (!deviceIdsRaw) return [];
@@ -427,7 +424,7 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
           as: 'items',
           include: [{
             model: ProductTemplete,
-            as: 'product', // <-- relation to fetch product data
+            as: 'product',
           }]
         },
         {
@@ -470,7 +467,33 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
       creditNoteMap[cn.dispatch_order_id].push(...(cn.items || []));
     });
 
-    // 4. Adjust items (remove returned device_ids)
+    // 4. Fetch asset swaps for all product IDs and device IDs
+    const allDeviceIds = [];
+    const allProductIds = new Set();
+    
+    // Collect all device IDs and product IDs from challan items
+    deliveryChallans.forEach(dc => {
+      dc.items.forEach(item => {
+        const deviceIds = parseDeviceIds(item.device_ids);
+        allDeviceIds.push(...deviceIds);
+        allProductIds.add(item.product_id);
+      });
+    });
+
+    // Fetch asset swaps for these product IDs and device IDs
+    const assetSwaps = await AssetSwap.findAll({
+      where: {
+        [Op.or]: [
+          { asset_id: { [Op.in]: allDeviceIds } },
+          { product_id: { [Op.in]: Array.from(allProductIds) } }
+        ]
+      }
+    });
+
+    // Create a map of swapped device IDs for quick lookup
+    const swappedDeviceIds = new Set(assetSwaps.map(swap => swap.asset_id));
+
+    // 5. Adjust items (remove returned and swapped device_ids)
     for (const challan of deliveryChallans) {
       const creditItems = creditNoteMap[challan.dispatch_order_id] || [];
 
@@ -478,29 +501,30 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
         const originalDeviceIds = parseDeviceIds(item.device_ids);
         let updatedDeviceIds = [...originalDeviceIds];
 
+        // Remove returned devices
         const matchingReturns = creditItems.filter(ci => ci.product_id === item.product_id);
-
         for (const ret of matchingReturns) {
           const returnedIds = parseDeviceIds(ret.device_ids);
           updatedDeviceIds = updatedDeviceIds.filter(id => !returnedIds.includes(id));
         }
+
+        // Remove swapped devices
+        updatedDeviceIds = updatedDeviceIds.filter(id => !swappedDeviceIds.has(id));
 
         item.device_ids = updatedDeviceIds;
         item.quantity = updatedDeviceIds.length;
       }
     }
 
-    // 5. Transform output: customer once, challans array separately
+    // 6. Transform output: customer once, challans array separately
     let customer = null;
     if (deliveryChallans.length > 0) {
-      customer = deliveryChallans[0].customer; // pick first one (all same)
+      customer = deliveryChallans[0].customer;
     }
 
     const challans = deliveryChallans.map(dc => {
-      const plain = dc.get({
-        plain: true
-      });
-      delete plain.customer; // remove duplicate
+      const plain = dc.get({ plain: true });
+      delete plain.customer;
       return plain;
     });
 
@@ -513,7 +537,7 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
     console.error('Error fetching delivery challans by customer_code:', error);
     res.status(500).json({
       message: 'Error fetching delivery challans',
-      error
+      error: error.message
     });
   }
 };
@@ -854,7 +878,7 @@ export const updateDeliveryChallan = async (req, res) => {
       remarks,
       dc_file,
       type,
-      payment_type: type === "Buy" ? type : "Rent",
+      payment_type,
       regular_dc,
       industry,
       shipping_ordered_by,

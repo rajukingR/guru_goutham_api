@@ -13,6 +13,9 @@ const GRN = db.GRN;
 const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
 const OrderAddress = db.OrderAddress;
+const AssetSwap = db.AssetSwap;
+const Quotation = db.Quotation;
+const QuotationItem = db.QuotationItem;
 
 // ✅ Create Dispatch Order with Items
 export const createDispatchOrder = async (req, res) => {
@@ -144,19 +147,34 @@ export const createDispatchOrder = async (req, res) => {
       });
 
       // Create Delivery Challan Items
-      if (items && Array.isArray(items)) {
-        const challanItems = items.map(item => ({
-          challan_id: deliveryChallan.id,
-          product_id: item.product_id,
-          product_name: item.product_name,
-          quantity: item.quantity,
-          unit_price: item.total_price / item.quantity, // Calculate unit price
-          total_price: item.total_price,
-          device_ids: item.device_ids || []
-        }));
+      // Create Delivery Challan Items
+if (items && Array.isArray(items)) {
+  const challanItems = items.map(item => {
+    // ✅ Fallback logic for prices
+    const finalPurchasePrice =
+      parseFloat(item.offer_purchase_price) > 0
+        ? parseFloat(item.offer_purchase_price)
+        : parseFloat(item.purchase_price);
 
-        await DeliveryChallanItem.bulkCreate(challanItems);
-      }
+    const finalRentPrice =
+      parseFloat(item.offer_rent_price_per_month) > 0
+        ? parseFloat(item.offer_rent_price_per_month)
+        : parseFloat(item.rent_price_per_month);
+
+    return {
+      challan_id: deliveryChallan.id,
+      product_id: item.product_id,
+      product_name: item.product_name,
+      quantity: item.quantity,
+      unit_price: finalRentPrice,        // ✅ Always rent price
+      total_price: finalPurchasePrice,   // ✅ Always purchase price
+      device_ids: item.device_ids || []
+    };
+  });
+
+  await DeliveryChallanItem.bulkCreate(challanItems);
+}
+
     }
 
     const response = {
@@ -389,6 +407,128 @@ export const getAllApprovedDispatchOrders = async (req, res) => {
 
 
 
+// export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
+//   try {
+//     // Step 1: Get GRN-approved DispatchOrder IDs
+//     const grnApprovedDispatchOrderIds = await GRN.findAll({
+//       attributes: ["dispatch_order_id"],
+//       where: { grn_status: "Approved" },
+//       raw: true,
+//     });
+//     const excludeIds = grnApprovedDispatchOrderIds.map(
+//       (grn) => grn.dispatch_order_id
+//     );
+
+//     // Step 2: Fetch ALL Approved Dispatch Orders
+//     const allApprovedOrders = await DispatchOrder.findAll({
+//       where: {
+//         dispatch_order_status: "Approved",
+//         id: { [Op.notIn]: excludeIds },
+//       },
+//       include: [
+//         { model: DispatchOrderItem, as: "items" },
+//         { model: Contact, as: "contact" },
+//         { model: DeliveryChallan, as: "delivery_challans", required: false },
+//       ],
+//       order: [["id", "DESC"]],
+//     });
+
+//     // Step 3: Filter logic
+//     const latestRentPerCustomer = {}; // key: customerCode+payment_type
+//     const buyOrders = [];
+
+//     for (const order of allApprovedOrders) {
+//       if (order.convert_rent_to_sale === "Buy") {
+//         // ✅ Buy → only peripheral_update = false
+//         if (order.peripheral_update === false) {
+//           order.dataValues.type = "Buy"; // override only for Buy
+//           buyOrders.push(order);
+//         }
+//       } else {
+//         // ✅ Rent → must check delivery challans
+//         const hasValidDC = order.delivery_challans?.some(
+//           (dc) =>
+//             dc.dc_status === "Delivered" &&
+//             dc.peripheral_update === false &&
+//             dc.defualt_dc === false
+//         );
+
+//         if (hasValidDC) {
+//           const customerCode = order.customer_code || order.contact?.id;
+//           const paymentType = order.payment_type || "Unknown";
+//           const key = `${customerCode}_${paymentType}`;
+
+//           if (!latestRentPerCustomer[key]) {
+//             // ⚠️ do NOT overwrite DB column type
+//             // keep DB value as is
+//             latestRentPerCustomer[key] = order;
+//           }
+//         }
+//       }
+//     }
+
+//     // Combine Rent + Buy
+//     const combinedOrders = [
+//       ...Object.values(latestRentPerCustomer),
+//       ...buyOrders,
+//     ];
+
+//     // Step 4: Subtract returned qty/device_ids for each order
+//     for (const order of combinedOrders) {
+//       const creditNotes = await CreditNote.findAll({
+//         where: { dispatch_order_id: order.id },
+//         include: [{ model: CreditNoteItem, as: "items" }],
+//       });
+
+//       const allReturnedItems = [];
+//       for (const creditNote of creditNotes) {
+//         for (const item of creditNote.items) {
+//           allReturnedItems.push({
+//             product_id: item.product_id,
+//             returned_quantity: item.quantity,
+//             returned_device_ids: item.device_ids || [],
+//           });
+//         }
+//       }
+
+//       for (const item of order.items) {
+//         const matchedReturns = allReturnedItems.filter(
+//           (ret) => ret.product_id === item.product_id
+//         );
+
+//         let totalReturnedQty = 0;
+//         let returnedDeviceIds = [];
+
+//         for (const ret of matchedReturns) {
+//           totalReturnedQty += ret.returned_quantity;
+//           if (Array.isArray(ret.returned_device_ids)) {
+//             returnedDeviceIds.push(...ret.returned_device_ids);
+//           }
+//         }
+
+//         item.dataValues.quantity = Math.max(0, item.quantity - totalReturnedQty);
+//         item.dataValues.device_ids = item.device_ids?.filter(
+//           (id) => !returnedDeviceIds.includes(id)
+//         );
+//       }
+//     }
+
+//     // Final sort by ID DESC
+//     const sortedCombinedOrders = combinedOrders.sort((a, b) => b.id - a.id);
+
+//     res.json(sortedCombinedOrders);
+//   } catch (err) {
+//     console.error("Error fetching dispatch orders:", err);
+//     res.status(500).json({
+//       message: "Failed to fetch filtered dispatch orders",
+//       error: err.message,
+//     });
+//   }
+// };
+
+
+
+
 export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
   try {
     // Step 1: Get GRN-approved DispatchOrder IDs
@@ -415,19 +555,30 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
       order: [["id", "DESC"]],
     });
 
-    // Step 3: Filter logic
+    // Step 3: Fetch Approved Direct Invoices from Quotations
+    const directInvoiceQuotations = await Quotation.findAll({
+      where: {
+        is_direct_invoice: 1,
+        status: "Approved",
+      },
+      include: [
+        { model: QuotationItem, as: "items" },
+        { model: Contact, as: "customer", required: false },
+      ],
+      order: [["id", "DESC"]],
+    });
+
+    // Step 4: Apply filter logic to DispatchOrders
     const latestRentPerCustomer = {}; // key: customerCode+payment_type
     const buyOrders = [];
 
     for (const order of allApprovedOrders) {
       if (order.convert_rent_to_sale === "Buy") {
-        // ✅ Buy → only peripheral_update = false
         if (order.peripheral_update === false) {
-          order.dataValues.type = "Buy"; // override only for Buy
+          order.dataValues.type = "Buy";
           buyOrders.push(order);
         }
       } else {
-        // ✅ Rent → must check delivery challans
         const hasValidDC = order.delivery_challans?.some(
           (dc) =>
             dc.dc_status === "Delivered" &&
@@ -441,22 +592,20 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
           const key = `${customerCode}_${paymentType}`;
 
           if (!latestRentPerCustomer[key]) {
-            // ⚠️ do NOT overwrite DB column type
-            // keep DB value as is
             latestRentPerCustomer[key] = order;
           }
         }
       }
     }
 
-    // Combine Rent + Buy
+    // Step 5: Adjust DispatchOrders with Credit Notes + Asset Swaps
     const combinedOrders = [
       ...Object.values(latestRentPerCustomer),
       ...buyOrders,
     ];
 
-    // Step 4: Subtract returned qty/device_ids for each order
     for (const order of combinedOrders) {
+      // --- 5.1 Handle Credit Notes ---
       const creditNotes = await CreditNote.findAll({
         where: { dispatch_order_id: order.id },
         include: [{ model: CreditNoteItem, as: "items" }],
@@ -473,7 +622,21 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
         }
       }
 
+      // --- 5.2 Handle Asset Swaps ---
+      const assetSwaps = await AssetSwap.findAll({
+        where: {
+          product_id: { [Op.in]: order.items.map((i) => i.product_id) },
+        },
+      });
+
+      const swappedItems = assetSwaps.map((swap) => ({
+        product_id: swap.product_id,
+        swapped_asset_id: swap.asset_id,
+      }));
+
+      // --- 5.3 Apply Adjustments per Item ---
       for (const item of order.items) {
+        // Credit Notes
         const matchedReturns = allReturnedItems.filter(
           (ret) => ret.product_id === item.product_id
         );
@@ -488,15 +651,43 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
           }
         }
 
+        // Subtract returned qty & devices
         item.dataValues.quantity = Math.max(0, item.quantity - totalReturnedQty);
         item.dataValues.device_ids = item.device_ids?.filter(
           (id) => !returnedDeviceIds.includes(id)
         );
+
+        // Asset Swaps: subtract swapped asset_ids
+        const matchedSwaps = swappedItems.filter(
+          (s) => s.product_id === item.product_id
+        );
+
+        if (matchedSwaps.length > 0) {
+          const swappedAssetIds = matchedSwaps.map((s) => s.swapped_asset_id);
+          item.dataValues.device_ids = item.dataValues.device_ids?.filter(
+            (id) => !swappedAssetIds.includes(id)
+          );
+          // also reduce quantity if needed
+          item.dataValues.quantity = Math.max(
+            0,
+            item.dataValues.device_ids?.length || 0
+          );
+        }
       }
     }
 
-    // Final sort by ID DESC
-    const sortedCombinedOrders = combinedOrders.sort((a, b) => b.id - a.id);
+    // Step 6: Merge Quotations (direct invoices) into result
+    const formattedQuotations = directInvoiceQuotations.map((q) => {
+      return {
+        ...q.get({ plain: true }),
+        type: "DirectInvoice",
+      };
+    });
+
+    // Step 7: Final sort by ID DESC
+    const sortedCombinedOrders = [...combinedOrders, ...formattedQuotations].sort(
+      (a, b) => b.id - a.id
+    );
 
     res.json(sortedCombinedOrders);
   } catch (err) {
@@ -507,8 +698,6 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
     });
   }
 };
-
-
 
 
 
@@ -543,10 +732,9 @@ export const getDispatchOrderById = async (req, res) => {
 };
 
 // ✅ Update Dispatch Order and Its Items + Related Delivery Challans
-// ✅ Update Dispatch Order with Items + Delivery Challan sync
 export const updateDispatchOrder = async (req, res) => {
   try {
-    const { id } = req.params; // Numeric PK
+    const { id } = req.params; // numeric PK
     const {
       items,
       is_direct_invoice,
@@ -575,6 +763,8 @@ export const updateDispatchOrder = async (req, res) => {
       regular_dispatch_order,
       peripheral_update,
       dispatch_order_id, // business ID like DC-XXXX
+      convert_rent_to_sale,
+      order_sale_date: bodyOrderSaleDate,
       ...orderData
     } = req.body;
 
@@ -584,10 +774,18 @@ export const updateDispatchOrder = async (req, res) => {
       return res.status(404).json({ message: "Dispatch order not found" });
     }
 
+    // ✅ Decide order_sale_date
+    let orderSaleDate = null;
+    if (convert_rent_to_sale === "Buy") {
+      orderSaleDate = bodyOrderSaleDate
+        ? new Date(bodyOrderSaleDate).toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0];
+    }
+
     // ✅ Update Dispatch Order
     await order.update({
       ...orderData,
-      dispatch_order_id, // string ID
+      dispatch_order_id,
       dispatch_order_date,
       customer_code,
       order_id,
@@ -612,6 +810,8 @@ export const updateDispatchOrder = async (req, res) => {
       regular_dispatch_order,
       peripheral_update,
       is_direct_invoice: is_direct_invoice || false,
+      convert_rent_to_sale,
+      order_sale_date: orderSaleDate,
     });
 
     // ✅ Replace Dispatch Order Items
@@ -619,7 +819,7 @@ export const updateDispatchOrder = async (req, res) => {
       await DispatchOrderItem.destroy({ where: { dispatch_order_id: order.id } });
       const enrichedItems = items.map((item) => ({
         ...item,
-        dispatch_order_id: order.id, // ✅ numeric FK
+        dispatch_order_id: order.id, // numeric FK
       }));
       await DispatchOrderItem.bulkCreate(enrichedItems);
     }
@@ -627,7 +827,7 @@ export const updateDispatchOrder = async (req, res) => {
     let deliveryChallan = null;
 
     if (is_direct_invoice) {
-      // ✅ Find existing Delivery Challan by numeric FK
+      // ✅ Find existing Delivery Challan
       deliveryChallan = await DeliveryChallan.findOne({
         where: { dispatch_order_id: order.id },
       });
@@ -645,7 +845,7 @@ export const updateDispatchOrder = async (req, res) => {
           gst_number: gst_number || "",
           pan_number: pan_number || "",
           remarks: remarks || "",
-          type: type || transaction_type,
+          type: convert_rent_to_sale,
           payment_type,
           regular_dc: regular_dispatch_order,
           industry: industry || "",
@@ -660,6 +860,8 @@ export const updateDispatchOrder = async (req, res) => {
           country,
           peripheral_update: peripheral_update || false,
           is_direct_invoice: true,
+          convert_rent_to_sale,
+          order_sale_date: orderSaleDate,
         });
 
         // Replace challan items
@@ -684,8 +886,8 @@ export const updateDispatchOrder = async (req, res) => {
           dc_title: "",
           is_dc: true,
           order_id,
-          dispatch_order_id: order.id, // ✅ numeric FK
-          dispatch_order_number: order.dispatch_order_id, // ✅ business ID (string)
+          dispatch_order_id: order.id, // numeric FK
+          dispatch_order_number: order.dispatch_order_id, // business ID
           customer_code,
           order_number,
           dc_date: dispatch_order_date,
@@ -695,8 +897,8 @@ export const updateDispatchOrder = async (req, res) => {
           gst_number: gst_number || "",
           pan_number: pan_number || "",
           remarks: remarks || "",
-          type: type || transaction_type,
-          payment_type,
+          type: convert_rent_to_sale,
+          payment_type:convert_rent_to_sale,
           regular_dc: regular_dispatch_order,
           industry: industry || "",
           shipping_ordered_by,
@@ -710,6 +912,8 @@ export const updateDispatchOrder = async (req, res) => {
           country,
           peripheral_update: peripheral_update || false,
           is_direct_invoice: true,
+          convert_rent_to_sale,
+          order_sale_date: orderSaleDate,
         });
 
         if (items && Array.isArray(items)) {
@@ -726,7 +930,7 @@ export const updateDispatchOrder = async (req, res) => {
         }
       }
     } else {
-      // ❌ If no direct invoice → delete challan & items
+      // ❌ If not direct invoice → delete challan & items
       const existingChallan = await DeliveryChallan.findOne({
         where: { dispatch_order_id: order.id },
       });

@@ -8,13 +8,15 @@ import {
   deleteProductCategory
 } from '../controllers/ProductCategoriesController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
-router.post('/create', createProductCategory);
-router.get('/', getAllProductCategories);
-router.get('/active', getActiveProductCategories);
-router.get('/:id', getProductCategoryById);
-router.put('/:id', updateProductCategory);
-router.delete('/:id', deleteProductCategory);
+router.post('/create', authMiddleware, createProductCategory);
+router.get('/', authMiddleware, getAllProductCategories);
+router.get('/active', authMiddleware, getActiveProductCategories);
+router.get('/:id', authMiddleware, getProductCategoryById);
+router.put('/:id', authMiddleware, updateProductCategory);
+router.delete('/:id', authMiddleware, deleteProductCategory);
 
 export default router;

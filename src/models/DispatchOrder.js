@@ -23,10 +23,10 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.DATEONLY
     },
     rental_end_date: DataTypes.DATE,
-order_sale_date: {
-  type: DataTypes.DATEONLY,
-  allowNull: true
-},
+    order_sale_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true
+    },
     order_id: {
       type: DataTypes.INTEGER
     },

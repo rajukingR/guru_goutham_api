@@ -9,15 +9,17 @@ import {
   deleteDispatchOrder
 } from "../controllers/dispatchOrderController.js";
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
-router.post("/create", createDispatchOrder);
-router.get("/", getAllDispatchOrders);
-router.get("/approved", getAllApprovedDispatchOrders);
-router.get("/approved-dc", getAllApprovedDispatchOrdersApprovedDC);
+router.post("/create", authMiddleware, createDispatchOrder);
+router.get("/", authMiddleware, getAllDispatchOrders);
+router.get("/approved", authMiddleware, getAllApprovedDispatchOrders);
+router.get("/approved-dc", authMiddleware, getAllApprovedDispatchOrdersApprovedDC);
 
-router.get("/:id", getDispatchOrderById);
-router.put("/:id", updateDispatchOrder);
-router.delete("/:id", deleteDispatchOrder);
+router.get("/:id", authMiddleware, getDispatchOrderById);
+router.put("/:id", authMiddleware, updateDispatchOrder);
+router.delete("/:id", authMiddleware, deleteDispatchOrder);
 
 export default router;

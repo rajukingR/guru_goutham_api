@@ -1,4 +1,11 @@
 import db from '../models/index.js';
+import {
+  Op
+} from "sequelize";
+const {
+  sequelize
+} = db; // ✅ Add this
+
 const Quotation = db.Quotation;
 const QuotationItem = db.QuotationItem;
 const Product = db.Product;
@@ -7,6 +14,7 @@ const GoodsReceiptItem = db.GoodsReceiptItem;
 const Order = db.Order;
 const OrderItem = db.OrderItem;
 const Contact = db.Contact;
+const ProductTemplete = db.ProductTemplete;
 
 export const createQuotation = async (req, res) => {
   try {
@@ -25,10 +33,55 @@ export const createQuotation = async (req, res) => {
       customer_id,
       customer_first_name,
       customer_last_name,
+      is_direct_invoice,
       items
     } = req.body;
 
-    // Create main quotation
+    // ✅ Collect all asset_ids from request
+    const allAssetIds = items?.flatMap((item) => item.asset_ids || []) || [];
+
+    if (allAssetIds.length > 0) {
+      // ✅ Check for duplicates within the request itself
+      const duplicateInRequest = allAssetIds.filter(
+        (id, idx) => allAssetIds.indexOf(id) !== idx
+      );
+
+      if (duplicateInRequest.length > 0) {
+        return res.status(400).json({
+          message: "Duplicate Asset IDs found in request",
+          duplicates: [...new Set(duplicateInRequest)],
+        });
+      }
+
+      // ✅ Check for duplicates in DB
+      const existingItems = await QuotationItem.findAll({
+        where: sequelize.literal(
+          `JSON_OVERLAPS(device_ids, '${JSON.stringify(allAssetIds)}')`
+        ),
+        attributes: ["id", "product_name", "device_ids"],
+      });
+
+      if (existingItems.length > 0) {
+        const foundDuplicates = [];
+        existingItems.forEach((row) => {
+          const storedIds = row.device_ids || [];
+          const overlap = storedIds.filter((id) => allAssetIds.includes(id));
+          overlap.forEach((id) => {
+            foundDuplicates.push({
+              asset_id: id,
+              product_name: row.product_name || "Unknown Product",
+            });
+          });
+        });
+
+        return res.status(400).json({
+          message: "Duplicate Asset IDs found in database",
+          duplicates: foundDuplicates,
+        });
+      }
+    }
+
+    // ✅ Create main quotation
     const quotation = await Quotation.create({
       quotation_id,
       quotation_title,
@@ -44,47 +97,51 @@ export const createQuotation = async (req, res) => {
       customer_id,
       customer_first_name,
       customer_last_name,
+      is_direct_invoice: is_direct_invoice ?? false,
       created_at: new Date(),
-      updated_at: new Date()
+      updated_at: new Date(),
     });
 
-    // Create quotation items with pricing fields
+    // ✅ Create quotation items
     if (items && Array.isArray(items)) {
-      const itemsWithProductNames = await Promise.all(
+      const itemsWithDeviceIds = await Promise.all(
         items.map(async (item) => {
           const product = await Product.findByPk(item.product_id);
 
           return {
             quotation_id: quotation.id,
             product_id: item.product_id,
-            product_name: product ? product.product_name : null, // assuming column is product_name
+            product_name: item.product_name,
             requested_quantity: item.requested_quantity,
             quotation_quantity: item.quotation_quantity,
             purchase_price: item.purchase_price || 0,
             offer_purchase_price: item.offer_purchase_price || 0,
             rent_price_per_month: item.rent_price_per_month || 0,
             offer_rent_price_per_month: item.offer_rent_price_per_month || 0,
+            device_ids: item.asset_ids || [],
             created_at: new Date(),
-            updated_at: new Date()
+            updated_at: new Date(),
           };
         })
       );
 
-      await QuotationItem.bulkCreate(itemsWithProductNames);
+      await QuotationItem.bulkCreate(itemsWithDeviceIds);
     }
 
     res.status(201).json({
       message: "Quotation created successfully",
-      quotation
+      quotation,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       message: "Error creating quotation",
-      error: error.message
+      error: error.message,
     });
   }
 };
+
+
 
 
 
@@ -92,13 +149,13 @@ export const createQuotation = async (req, res) => {
 export const getAllQuotations = async (req, res) => {
   try {
     const quotations = await Quotation.findAll({
-      include: [
-        {
-          model: QuotationItem,
-          as: 'items', // use the same alias as defined in the model
-        }
-      ],
-      order: [['created_at', 'DESC']] // <-- Sort by created_at descending
+      include: [{
+        model: QuotationItem,
+        as: 'items', // use the same alias as defined in the model
+      }],
+      order: [
+        ['created_at', 'DESC']
+      ] // <-- Sort by created_at descending
     });
 
     res.status(200).json(quotations);
@@ -117,7 +174,8 @@ export const getAllQuotationsApproved = async (req, res) => {
   try {
     const quotations = await Quotation.findAll({
       where: {
-        status: 'Approved'
+        status: 'Approved',
+        is_direct_invoice: false
       },
       include: [{
           model: QuotationItem,
@@ -152,7 +210,9 @@ export const getAllQuotationsApproved = async (req, res) => {
           ],
         },
       ],
-                  order: [['id', 'DESC']] // <-- Sort leads by created_at descending
+      order: [
+        ['id', 'DESC']
+      ] // <-- Sort leads by created_at descending
 
     });
 
@@ -228,14 +288,19 @@ export const getQuotationById = async (req, res) => {
     const {
       id
     } = req.params;
+
     const quotation = await Quotation.findByPk(id, {
       include: [{
-        model: QuotationItem,
-        as: 'items', // use the same alias as defined in the model
-      },
-      {
+          model: QuotationItem,
+          as: 'items',
+          include: [{
+            model: ProductTemplete,
+            as: 'product', // ✅ now valid
+          }, ],
+        },
+        {
           model: Contact,
-          as: 'customer', // This alias must match the one in the association
+          as: 'customer',
           attributes: [
             'id',
             'first_name',
@@ -253,31 +318,35 @@ export const getQuotationById = async (req, res) => {
             'status',
             'created_at',
             'updated_at',
-            'address'
+            'address',
           ],
         },
-    
-    ]
+      ],
     });
 
-    if (!quotation) return res.status(404).json({
-      message: 'Quotation not found'
-    });
+    if (!quotation) {
+      return res.status(404).json({
+        message: 'Quotation not found'
+      });
+    }
 
     res.status(200).json(quotation);
   } catch (error) {
     console.error(error);
     res.status(500).json({
       message: 'Error fetching quotation',
-      error
+      error,
     });
   }
 };
 
+
 // Update quotation
 export const updateQuotation = async (req, res) => {
   try {
-    const { id } = req.params;
+    const {
+      id
+    } = req.params;
     const {
       quotation_title,
       quotation_date,
@@ -292,15 +361,73 @@ export const updateQuotation = async (req, res) => {
       customer_first_name,
       customer_last_name,
       items, // includes price fields too
-      lead_id
+      lead_id,
+      is_direct_invoice,
     } = req.body;
 
     const quotation = await Quotation.findByPk(id);
     if (!quotation) {
-      return res.status(404).json({ message: "Quotation not found" });
+      return res.status(404).json({
+        message: "Quotation not found"
+      });
     }
 
-    // Update quotation
+    // ✅ Collect all asset_ids from request
+    const allAssetIds = items?.flatMap((item) => item.asset_ids || []) || [];
+
+    if (allAssetIds.length > 0) {
+      // ✅ Check for duplicates in the request itself
+      const duplicateInRequest = allAssetIds.filter(
+        (id, idx) => allAssetIds.indexOf(id) !== idx
+      );
+
+      if (duplicateInRequest.length > 0) {
+        return res.status(400).json({
+          message: "Duplicate Asset IDs found in request",
+          duplicates: [...new Set(duplicateInRequest)],
+        });
+      }
+
+      // ✅ Check for duplicates in DB (excluding current quotation's items)
+      const existingItems = await QuotationItem.findAll({
+        where: {
+          quotation_id: {
+            [Op.ne]: id
+          }, // exclude current quotation
+        },
+        attributes: ["id", "product_name", "device_ids"],
+      });
+
+      const foundDuplicates = [];
+      existingItems.forEach((row) => {
+        const storedIds = row.device_ids || [];
+        const overlap = storedIds.filter((id) => allAssetIds.includes(id));
+        overlap.forEach((id) => {
+          foundDuplicates.push({
+            asset_id: id,
+            product_name: row.product_name || "Unknown Product",
+          });
+        });
+      });
+
+      // ✅ Deduplicate before returning
+      const seen = new Set();
+      const uniqueDuplicates = foundDuplicates.filter((d) => {
+        const key = `${d.asset_id}-${d.product_name}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (uniqueDuplicates.length > 0) {
+        return res.status(400).json({
+          message: "Duplicate Asset IDs found in database",
+          duplicates: uniqueDuplicates,
+        });
+      }
+    }
+
+    // ✅ Update quotation
     await quotation.update({
       quotation_title,
       quotation_date,
@@ -315,15 +442,18 @@ export const updateQuotation = async (req, res) => {
       customer_first_name,
       customer_last_name,
       lead_id,
+      is_direct_invoice: is_direct_invoice ?? false,
       updated_at: new Date(),
     });
 
-    // Handle items update
+    // ✅ Handle items update
     if (items && items.length > 0) {
-      // Remove old items
-      await QuotationItem.destroy({ where: { quotation_id: id } });
+      await QuotationItem.destroy({
+        where: {
+          quotation_id: id
+        }
+      });
 
-      // Insert new items with new columns
       const quotationItems = items.map((item) => ({
         quotation_id: id,
         product_id: item.product_id,
@@ -334,6 +464,7 @@ export const updateQuotation = async (req, res) => {
         offer_purchase_price: item.offer_purchase_price || 0,
         rent_price_per_month: item.rent_price_per_month || 0,
         offer_rent_price_per_month: item.offer_rent_price_per_month || 0,
+        device_ids: item.asset_ids || [], // ✅ Add this back
         created_at: new Date(),
         updated_at: new Date(),
       }));
@@ -353,6 +484,8 @@ export const updateQuotation = async (req, res) => {
     });
   }
 };
+
+
 
 
 

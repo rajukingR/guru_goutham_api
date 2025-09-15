@@ -12,11 +12,11 @@ import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.post('/create', createQuotation);
-router.get('/', getAllQuotations);
-router.get('/approved', getAllQuotationsApproved);
-router.get('/:id', getQuotationById);
-router.put('/:id', updateQuotation);
-router.delete('/:id', deleteQuotation);
+router.post('/create', authMiddleware, createQuotation);
+router.get('/', authMiddleware, getAllQuotations);
+router.get('/approved', authMiddleware, getAllQuotationsApproved);
+router.get('/:id', authMiddleware, getQuotationById);
+router.put('/:id', authMiddleware, updateQuotation);
+router.delete('/:id', authMiddleware, deleteQuotation);
 
 export default router;

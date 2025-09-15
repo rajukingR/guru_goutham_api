@@ -7,12 +7,14 @@ import {
   deleteAssetModification
 } from '../controllers/assetModificationTrackerController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
-router.post('/create', createAssetModification);
-router.get('/', getAllAssetModifications);
-router.get('/:id', getAssetModificationById);
-router.put('/:id', updateAssetModification);
-router.delete('/:id', deleteAssetModification);
+router.post('/create', authMiddleware, createAssetModification);
+router.get('/', authMiddleware, getAllAssetModifications);
+router.get('/:id', authMiddleware, getAssetModificationById);
+router.put('/:id', authMiddleware, updateAssetModification);
+router.delete('/:id', authMiddleware, deleteAssetModification);
 
 export default router;

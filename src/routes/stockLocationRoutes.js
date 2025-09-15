@@ -8,14 +8,16 @@ import {
   deleteStockLocation,
 } from '../controllers/stockLocationController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
-router.post('/create', createStockLocation);
-router.get('/', getAllStockLocations);
-router.get('/active-stock-location', getAllActiveStockLocations);
+router.post('/create', authMiddleware, createStockLocation);
+router.get('/', authMiddleware, getAllStockLocations);
+router.get('/active-stock-location', authMiddleware, getAllActiveStockLocations);
 
-router.get('/:id', getStockLocationById);
-router.put('/:id', updateStockLocation);
-router.delete('/:id', deleteStockLocation);
+router.get('/:id', authMiddleware, getStockLocationById);
+router.put('/:id', authMiddleware, updateStockLocation);
+router.delete('/:id', authMiddleware, deleteStockLocation);
 
 export default router;

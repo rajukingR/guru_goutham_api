@@ -9,12 +9,14 @@ import {
   deleteTax
 } from '../controllers/TaxListController.js';
 
+import authMiddleware from "../middlewares/authMiddleware.js";
+
 const router = express.Router();
 
-router.post('/create', createTax);
-router.get('/', getAllTaxes);
-router.get('/:id', getTaxById);
-router.put('/:id', updateTax);
-router.delete('/:id', deleteTax);
+router.post('/create', authMiddleware, createTax);
+router.get('/', authMiddleware, getAllTaxes);
+router.get('/:id', authMiddleware, getTaxById);
+router.put('/:id', authMiddleware, updateTax);
+router.delete('/:id', authMiddleware, deleteTax);
 
 export default router;

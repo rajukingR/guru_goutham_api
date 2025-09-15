@@ -27,12 +27,12 @@
 // // Create timestamp string in desired format
 // const getTimestamp = () => new Date().toISOString().replace(/[:.]/g, '-');
 
-// // Nodemailer transporter config
+// Nodemailer transporter config
 // const transporter = nodemailer.createTransport({
 //   service: 'Gmail',
 //   auth: {
-//     user: 'rajuking9160@gmail.com',
-//     pass: 'ifye whlp asxl owhf',
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS,
 //   },
 // });
 

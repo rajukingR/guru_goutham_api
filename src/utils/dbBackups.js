@@ -96,13 +96,13 @@
 //   });
 // };
 
-// // Send Excel backup via email (from buffer)
+// Send Excel backup via email (from buffer)
 // const sendBackupEmail = (excelBuffer, timestamp) => {
 //   const excelFileName = `${process.env.DB_NAME}-backup-${timestamp}.xlsx`;
 
 //   const mailOptions = {
-//     from: 'rajuking9160@gmail.com',
-//     to: 'mulintiraju9160@gmail.com',
+//     from: process.env.EMAIL_USER,
+//     to: process.env.EMAIL_TO,
 //     subject: '📦 Daily Database Backup (Excel)',
 //     text: 'Attached is the latest database backup in Excel format.',
 //     attachments: [
@@ -185,8 +185,8 @@ const tables = [
 // Send backup file via email
 const sendBackupEmail = (filePath) => {
     const mailOptions = {
-        from: "rajuking9160@gmail.com",
-        to: "mulintiraju9160@gmail.com",
+        from: process.env.EMAIL_USER,
+        to: process.env.EMAIL_TO,
         subject: "📦 Daily Database Backup (Excel)",
         text: "Attached is the latest database backup in Excel format.",
         attachments: [{

@@ -39,7 +39,7 @@ import clientRoutes from './routes/clientDetailsRoutes.js';
 
 import assetRoutesTracker from './routes/AssetRoutes.js';
 import assetModificationRoutes from './routes/assetModificationRoutes.js';
-import ramSpecRoutes from './routes/ramSpecRoutes.js'; // Adjust path as needed
+import ramSpecRoutes from './routes/ramSpecRoutes.js';
 import stateRoutes from './routes/salesRoutes.js';
 import dispatchOrderRoutes from "./routes/dispatchOrderRoutes.js";
 import assembledAssetRoutes from "./routes/assembledAssetRoutes.js";

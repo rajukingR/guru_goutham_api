@@ -872,7 +872,7 @@ export const updateDispatchOrder = async (req, res) => {
             product_id: item.product_id,
             product_name: item.product_name,
             quantity: item.quantity,
-            unit_price: item.total_price / item.quantity,
+            unit_price: item.rent_price_per_month,
             total_price: item.total_price,
             device_ids: item.device_ids || [],
           }));
@@ -922,7 +922,7 @@ export const updateDispatchOrder = async (req, res) => {
             product_id: item.product_id,
             product_name: item.product_name,
             quantity: item.quantity,
-            unit_price: item.total_price / item.quantity,
+            unit_price: item.rent_price_per_month,
             total_price: item.total_price,
             device_ids: item.device_ids || [],
           }));

@@ -3097,6 +3097,384 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 
 
 
+//17-09-2025
+
+// export const getInvoiceById = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     // Helpers
+//     const monthDiff = (date1, date2) =>
+//       (date2.getFullYear() - date1.getFullYear()) * 12 +
+//       (date2.getMonth() - date1.getMonth());
+
+//     const parseJSONSafe = (input) => {
+//       try {
+//         if (typeof input === "string") return JSON.parse(input);
+//         return Array.isArray(input) ? input : [];
+//       } catch {
+//         return [];
+//       }
+//     };
+
+//     const getPeripheralsForDevices = async (productId, deviceIds, invoiceStartDate) => {
+//       if (!deviceIds || deviceIds.length === 0) return [];
+//       const peripherals = await Peripheral.findAll({
+//         where: {
+//           parent_product_id: productId,
+//           parent_asset_id: {
+//             [Op.in]: deviceIds
+//           },
+//           approved_date: {
+//             [Op.lt]: invoiceStartDate
+//           },
+//         },
+//         include: [{
+//           model: PeripheralItem,
+//           as: "items"
+//         }],
+//       });
+//       return peripherals.map((p) => p.toJSON());
+//     };
+
+//     const shouldIncludeChallan = (challanOrderSaleDate, invoiceStartDate) => {
+//       if (!challanOrderSaleDate) return true;
+//       if (!invoiceStartDate) return false;
+//       const challanDate = new Date(challanOrderSaleDate);
+//       const invoiceStart = new Date(invoiceStartDate);
+//       const challanMonth = new Date(challanDate.getFullYear(), challanDate.getMonth(), 1);
+//       const invoiceMonth = new Date(invoiceStart.getFullYear(), invoiceStart.getMonth(), 1);
+//       return challanMonth.getTime() === invoiceMonth.getTime() || challanMonth >= invoiceMonth;
+//     };
+
+//     const filterRemainingDevices = (originalIds, returnedIds, swappedIds) => {
+//       return originalIds.filter((id) => !returnedIds.includes(id) && !swappedIds.includes(id));
+//     };
+
+//     // Count invoices with same dispatch_order_id whose ID is <= current
+//     const countDispatchOrderUpToCurrent = async (dispatchOrderId, currentInvoiceId) => {
+//       if (!dispatchOrderId) return 0;
+//       return await Invoice.count({
+//         where: {
+//           dispatch_order_id: dispatchOrderId,
+//           id: {
+//             [Op.lte]: currentInvoiceId
+//           },
+//         },
+//       });
+//     };
+
+//     // Fetch invoice
+//     const invoice = await Invoice.findByPk(id, {
+//       include: [{
+//           model: InvoiceItem,
+//           as: "items",
+//           include: [{
+//             model: ProductTemplete,
+//             as: "productDetails"
+//           }],
+//         },
+//         {
+//           model: InvoiceShippingDetail,
+//           as: "shippingDetail"
+//         },
+//       ],
+//     });
+
+//     if (!invoice) return res.status(404).json({
+//       message: "Invoice not found"
+//     });
+
+//     // Count how many times main invoice's dispatch_order_id was created up to this invoice
+//     const mainDispatchOrderCount = await countDispatchOrderUpToCurrent(invoice.dispatch_order_id, invoice.id);
+
+//     // Order info
+//     const order = await Order.findByPk(invoice.order_id);
+//     const order_date = order?.order_date || null;
+//     const order_table_id = order?.order_id || null;
+
+//     // Important dates
+//     const invoiceStart = new Date(invoice.invoice_start_date);
+//     const invoiceEnd = new Date(invoice.invoice_end_date);
+//     const invoiceDcDate = new Date(invoice.dc_date);
+
+//     let filteredCreditNotes = [];
+//     let allReturnedFromCreditNotes = [];
+//     let additionalDeliveryChallans = [];
+//     const sameMonth = monthDiff(invoiceDcDate, invoiceStart) === 0;
+    
+
+//     let filteredAssetSwaps = [];
+//     let allSwappedDeviceIds = [];
+
+//     if (invoice.transaction_type !== "Buy") {
+//       // Get ALL asset swaps first to build complete list of swapped devices
+//       const allAssetSwaps = await AssetSwap.findAll({
+//         where: {
+//           swapped_on: {
+//             [Op.lte]: invoiceEnd
+//           },
+//         },
+//       });
+      
+//       // Build complete list of swapped device IDs
+//       allSwappedDeviceIds = allAssetSwaps.map(swap => swap.asset_id);
+
+//       // Credit notes
+//       const creditNotes = await CreditNote.findAll({
+//         where: {
+//           dispatch_order_id: invoice.dispatch_order_id,
+//           transaction_type: {
+//             [Op.ne]: "Asset Swap"
+//           }
+//         },
+//         include: [{
+//           model: CreditNoteItem,
+//           as: "items"
+//         }],
+//       });
+
+//       const [displayCreditNotes, processOnlyCreditNotes] = creditNotes.reduce(
+//         ([display, process], note) => {
+//           const noteData = note.toJSON();
+
+//           // 🚫 Skip Asset Swap credit notes completely
+//           if (noteData.transaction_type === "Asset Swap") return [display, process];
+
+//           if (!noteData.returned_date) return [display, process];
+//           const returnedDate = new Date(noteData.returned_date);
+//           const invoiceStartDate = new Date(invoice.invoice_start_date);
+//           const dcDate = new Date(invoice.dc_date);
+//           const diffDC = monthDiff(dcDate, returnedDate);
+//           const diffInvoice = monthDiff(invoiceStartDate, returnedDate);
+
+//           if (invoice.payment_mode === "Prepaid") {
+//             if (diffDC === 0 && diffInvoice === -1) return [
+//               [...display, noteData], process
+//             ];
+//             if (returnedDate > dcDate && returnedDate < invoiceStartDate) return [display, [...process, noteData]];
+//             return [display, process];
+//           } else if (invoice.payment_mode === "Postpaid") {
+//             if (diffInvoice === 0) return [
+//               [...display, noteData], process
+//             ];
+//             return [display, process];
+//           }
+//           return [display, process];
+//         },
+//         [
+//           [],
+//           []
+//         ]
+//       );
+
+//       filteredCreditNotes = displayCreditNotes;
+
+//       // Collect returned devices (skip Asset Swap notes)
+//       [...displayCreditNotes, ...processOnlyCreditNotes].forEach((note) => {
+//         if (note.transaction_type !== "Asset Swap") {
+//           note.items.forEach((ri) => {
+//             allReturnedFromCreditNotes.push(...parseJSONSafe(ri.device_ids));
+//           });
+//         }
+//       });
+
+//       // Filter asset swaps for display
+//       for (const swap of allAssetSwaps) {
+//         const swapData = swap.toJSON();
+//         const swappedDate = new Date(swapData.swapped_on);
+//         const diffDC = monthDiff(invoiceDcDate, swappedDate);
+//         const diffInvoice = monthDiff(invoiceStart, swappedDate);
+
+//         if (
+//           (invoice.payment_mode === "Prepaid" && diffDC === 0 && diffInvoice === -1) ||
+//           (invoice.payment_mode === "Postpaid" && diffInvoice === 0)
+//         ) {
+//           filteredAssetSwaps.push(swapData);
+//         }
+//       }
+
+//       // Additional challans
+
+// if (!(invoice.payment_mode === "Prepaid" && sameMonth)) {
+
+//         const otherChallans = await DeliveryChallan.findAll({
+//         where: {
+//           customer_code: invoice.customer_id.toString(),
+//           dispatch_order_id: {
+//             [Op.ne]: invoice.dispatch_order_id
+//           },
+//           dc_date: {
+//             [Op.lt]: invoiceDcDate
+//           },
+//           peripheral_update: false,
+//           payment_type: invoice.payment_mode,
+//         },
+//         include: [{
+//           model: DeliveryChallanItem,
+//           as: "items",
+//           include: [{
+//             model: ProductTemplete,
+//             as: "product"
+//           }],
+//         }, ],
+//         order: [
+//           ["dc_date", "ASC"]
+//         ],
+//       });
+
+//       for (const challan of otherChallans) {
+//         const challanDate = new Date(challan.dc_date);
+
+//         // 🚫 Skip challan completely if challan.dc_date and invoice_start_date are the SAME MONTH
+//         if (
+//           invoice.payment_mode === "Prepaid" &&
+//           monthDiff(challanDate, invoiceStart) === 0
+//         ) {
+//           continue;
+//         }
+
+//         if (!shouldIncludeChallan(challan.order_sale_date, invoice.invoice_start_date)) continue;
+
+//         // process challan...
+//         const challanCreditNotes = await CreditNote.findAll({
+//           where: {
+//             dispatch_order_id: challan.dispatch_order_id,
+//             transaction_type: {
+//               [Op.ne]: "Asset Swap" // ← EXCLUDE Asset Swap credit notes
+//             }
+//           },
+//           include: [{
+//             model: CreditNoteItem,
+//             as: "items"
+//           }],
+//         });
+
+//         const [displayChallanNotes, processChallanNotes] = challanCreditNotes.reduce(
+//           ([display, process], note) => {
+//             const noteData = note.toJSON();
+//             if (noteData.transaction_type === "Asset Swap") return [display, process];
+//             if (!noteData.returned_date) return [display, process];
+
+//             const returnedDate = new Date(noteData.returned_date);
+//             const invoiceStartDate = new Date(invoice.invoice_start_date);
+//             const dcDate = new Date(challan.dc_date);
+//             const diffDC = monthDiff(dcDate, returnedDate);
+//             const diffInvoice = monthDiff(invoiceStartDate, returnedDate);
+
+//             if (invoice.payment_mode === "Prepaid") {
+//               if (diffDC === 0 && diffInvoice === -1) return [
+//                 [...display, noteData], process
+//               ];
+//               if (returnedDate > dcDate && returnedDate < invoiceStartDate) return [display, [...process, noteData]];
+//             } else if (invoice.payment_mode === "Postpaid") {
+//               if (diffInvoice === 0) return [
+//                 [...display, noteData], process
+//               ];
+//             }
+//             return [display, process];
+//           },
+//           [
+//             [],
+//             []
+//           ]
+//         );
+
+//         let allReturnedForChallan = [];
+//         [...displayChallanNotes, ...processChallanNotes].forEach((note) => {
+//           if (note.transaction_type !== "Asset Swap") {
+//             note.items.forEach((ri) => {
+//               allReturnedForChallan.push(...parseJSONSafe(ri.device_ids));
+//             });
+//           }
+//         });
+
+//         const challanJSON = challan.toJSON();
+//         challanJSON.credit_notes = displayChallanNotes;
+
+//         challanJSON.items = challanJSON.items.map((item) => {
+//           const originalDeviceIds = parseJSONSafe(item.device_ids);
+//           const updatedDeviceIds = filterRemainingDevices(originalDeviceIds, allReturnedForChallan, allSwappedDeviceIds);
+//           return {
+//             ...item,
+//             device_ids: updatedDeviceIds,
+//             quantity: updatedDeviceIds.length,
+//           };
+//         });
+
+//         challanJSON.times_created_in_invoice = await countDispatchOrderUpToCurrent(
+//           challan.dispatch_order_id,
+//           invoice.id
+//         );
+
+//         additionalDeliveryChallans.push(challanJSON);
+//       }
+
+//       }
+      
+//     }
+
+//     // Main invoice items
+//     const updatedItems = [];
+//     for (const item of invoice.items) {
+//       const device_ids = parseJSONSafe(item.device_ids);
+//       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
+
+//       const remaining_device_ids =
+//         invoice.transaction_type === "Buy" ?
+//         device_ids :
+//         filterRemainingDevices(
+//           device_ids,
+//           [...returned_device_ids, ...allReturnedFromCreditNotes],
+//           allSwappedDeviceIds
+//         );
+
+//       const peripheralItems = await getPeripheralsForDevices(item.product_id, remaining_device_ids, invoiceStart);
+
+//       updatedItems.push({
+//         ...item.toJSON(),
+//         device_ids,
+//         returned_device_ids,
+//         remaining_device_ids,
+//         peripheralItems,
+//       });
+//     }
+
+//     // Peripherals for additional challans
+//     for (const challan of additionalDeliveryChallans) {
+//       for (const item of challan.items) {
+//         const device_ids = parseJSONSafe(item.device_ids);
+//         const peripheralItems = await getPeripheralsForDevices(item.product_id, device_ids, invoiceStart);
+//         item.peripheralItems = peripheralItems;
+//       }
+//     }
+
+//     // Final response
+//     const invoiceJSON = invoice.toJSON();
+//     invoiceJSON.items = updatedItems;
+//     invoiceJSON.order_table_id = order_table_id;
+//     invoiceJSON.order_date = order_date;
+//     invoiceJSON.credit_notes = filteredCreditNotes;
+//     invoiceJSON.asset_swaps = filteredAssetSwaps;
+//     invoiceJSON.additional_delivery_challans = additionalDeliveryChallans;
+//     invoiceJSON.rental_start_date = invoice.rental_start_date;
+//     invoiceJSON.rental_end_date = invoice.rental_end_date;
+//     invoiceJSON.times_created_in_invoice = mainDispatchOrderCount;
+
+//     return res.status(200).json(invoiceJSON);
+//   } catch (error) {
+//     console.error("Error fetching invoice:", error);
+//     res.status(500).json({
+//       message: "Internal server error",
+//       error: process.env.NODE_ENV === "development" ? error.message : undefined,
+//     });
+//   }
+// };
+
+
+
+
+
 export const getInvoiceById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -3162,6 +3540,33 @@ export const getInvoiceById = async (req, res) => {
       });
     };
 
+    // NEW: Function to separate credit notes by month (from first version)
+    const separateCreditNotesByMonth = (creditNotes, invoiceStartDate) => {
+      const invoiceStart = new Date(invoiceStartDate);
+      const invoiceStartMonth = invoiceStart.getMonth();
+      const invoiceStartYear = invoiceStart.getFullYear();
+      
+      const sameMonthCreditNotes = [];
+      const differentMonthCreditNotes = [];
+
+      creditNotes.forEach((note) => {
+        if (!note.returned_date) return;
+
+        const returnedDate = new Date(note.returned_date);
+        const returnedMonth = returnedDate.getMonth();
+        const returnedYear = returnedDate.getFullYear();
+
+        if (returnedMonth === invoiceStartMonth && 
+            returnedYear === invoiceStartYear) {
+          sameMonthCreditNotes.push(note);
+        } else {
+          differentMonthCreditNotes.push(note);
+        }
+      });
+
+      return { sameMonthCreditNotes, differentMonthCreditNotes };
+    };
+
     // Fetch invoice
     const invoice = await Invoice.findByPk(id, {
       include: [{
@@ -3199,6 +3604,8 @@ export const getInvoiceById = async (req, res) => {
     let filteredCreditNotes = [];
     let allReturnedFromCreditNotes = [];
     let additionalDeliveryChallans = [];
+    const sameMonth = monthDiff(invoiceDcDate, invoiceStart) === 0;
+    
     let filteredAssetSwaps = [];
     let allSwappedDeviceIds = [];
 
@@ -3215,8 +3622,8 @@ export const getInvoiceById = async (req, res) => {
       // Build complete list of swapped device IDs
       allSwappedDeviceIds = allAssetSwaps.map(swap => swap.asset_id);
 
-      // Credit notes
-      const creditNotes = await CreditNote.findAll({
+      // Credit notes - get ALL first
+      const allCreditNotes = await CreditNote.findAll({
         where: {
           dispatch_order_id: invoice.dispatch_order_id,
           transaction_type: {
@@ -3229,44 +3636,16 @@ export const getInvoiceById = async (req, res) => {
         }],
       });
 
-      const [displayCreditNotes, processOnlyCreditNotes] = creditNotes.reduce(
-        ([display, process], note) => {
-          const noteData = note.toJSON();
-
-          // 🚫 Skip Asset Swap credit notes completely
-          if (noteData.transaction_type === "Asset Swap") return [display, process];
-
-          if (!noteData.returned_date) return [display, process];
-          const returnedDate = new Date(noteData.returned_date);
-          const invoiceStartDate = new Date(invoice.invoice_start_date);
-          const dcDate = new Date(invoice.dc_date);
-          const diffDC = monthDiff(dcDate, returnedDate);
-          const diffInvoice = monthDiff(invoiceStartDate, returnedDate);
-
-          if (invoice.payment_mode === "Prepaid") {
-            if (diffDC === 0 && diffInvoice === -1) return [
-              [...display, noteData], process
-            ];
-            if (returnedDate > dcDate && returnedDate < invoiceStartDate) return [display, [...process, noteData]];
-            return [display, process];
-          } else if (invoice.payment_mode === "Postpaid") {
-            if (diffInvoice === 0) return [
-              [...display, noteData], process
-            ];
-            return [display, process];
-          }
-          return [display, process];
-        },
-        [
-          [],
-          []
-        ]
-      );
-
-      filteredCreditNotes = displayCreditNotes;
-
-      // Collect returned devices (skip Asset Swap notes)
-      [...displayCreditNotes, ...processOnlyCreditNotes].forEach((note) => {
+      // NEW: Apply the first version's approach to separate credit notes
+      const allCreditNotesJSON = allCreditNotes.map(note => note.toJSON());
+      const { sameMonthCreditNotes, differentMonthCreditNotes } = 
+        separateCreditNotesByMonth(allCreditNotesJSON, invoice.invoice_start_date);
+      
+      // Use the same-month credit notes for display
+      filteredCreditNotes = sameMonthCreditNotes;
+      
+      // Collect returned devices from different-month credit notes for subtraction
+      differentMonthCreditNotes.forEach((note) => {
         if (note.transaction_type !== "Asset Swap") {
           note.items.forEach((ri) => {
             allReturnedFromCreditNotes.push(...parseJSONSafe(ri.device_ids));
@@ -3290,125 +3669,112 @@ export const getInvoiceById = async (req, res) => {
       }
 
       // Additional challans
-      const otherChallans = await DeliveryChallan.findAll({
-        where: {
-          customer_code: invoice.customer_id.toString(),
-          dispatch_order_id: {
-            [Op.ne]: invoice.dispatch_order_id
-          },
-          dc_date: {
-            [Op.lt]: invoiceDcDate
-          },
-          peripheral_update: false,
-          payment_type: invoice.payment_mode,
-        },
-        include: [{
-          model: DeliveryChallanItem,
-          as: "items",
-          include: [{
-            model: ProductTemplete,
-            as: "product"
-          }],
-        }, ],
-        order: [
-          ["dc_date", "ASC"]
-        ],
-      });
-
-      for (const challan of otherChallans) {
-        const challanDate = new Date(challan.dc_date);
-
-        // 🚫 Skip challan completely if challan.dc_date and invoice_start_date are the SAME MONTH
-        if (
-          invoice.payment_mode === "Prepaid" &&
-          monthDiff(challanDate, invoiceStart) === 0
-        ) {
-          continue;
-        }
-
-        if (!shouldIncludeChallan(challan.order_sale_date, invoice.invoice_start_date)) continue;
-
-        // process challan...
-        const challanCreditNotes = await CreditNote.findAll({
+      if (!(invoice.payment_mode === "Prepaid" && sameMonth)) {
+        const otherChallans = await DeliveryChallan.findAll({
           where: {
-            dispatch_order_id: challan.dispatch_order_id,
-            transaction_type: {
-              [Op.ne]: "Asset Swap" // ← EXCLUDE Asset Swap credit notes
-            }
+            customer_code: invoice.customer_id.toString(),
+            dispatch_order_id: {
+              [Op.ne]: invoice.dispatch_order_id
+            },
+            dc_date: {
+              [Op.lt]: invoiceDcDate
+            },
+            peripheral_update: false,
+            payment_type: invoice.payment_mode,
           },
           include: [{
-            model: CreditNoteItem,
-            as: "items"
-          }],
+            model: DeliveryChallanItem,
+            as: "items",
+            include: [{
+              model: ProductTemplete,
+              as: "product"
+            }],
+          }, ],
+          order: [
+            ["dc_date", "ASC"]
+          ],
         });
 
-        const [displayChallanNotes, processChallanNotes] = challanCreditNotes.reduce(
-          ([display, process], note) => {
-            const noteData = note.toJSON();
-            if (noteData.transaction_type === "Asset Swap") return [display, process];
-            if (!noteData.returned_date) return [display, process];
+        for (const challan of otherChallans) {
+          const challanDate = new Date(challan.dc_date);
 
-            const returnedDate = new Date(noteData.returned_date);
-            const invoiceStartDate = new Date(invoice.invoice_start_date);
-            const dcDate = new Date(challan.dc_date);
-            const diffDC = monthDiff(dcDate, returnedDate);
-            const diffInvoice = monthDiff(invoiceStartDate, returnedDate);
-
-            if (invoice.payment_mode === "Prepaid") {
-              if (diffDC === 0 && diffInvoice === -1) return [
-                [...display, noteData], process
-              ];
-              if (returnedDate > dcDate && returnedDate < invoiceStartDate) return [display, [...process, noteData]];
-            } else if (invoice.payment_mode === "Postpaid") {
-              if (diffInvoice === 0) return [
-                [...display, noteData], process
-              ];
-            }
-            return [display, process];
-          },
-          [
-            [],
-            []
-          ]
-        );
-
-        let allReturnedForChallan = [];
-        [...displayChallanNotes, ...processChallanNotes].forEach((note) => {
-          if (note.transaction_type !== "Asset Swap") {
-            note.items.forEach((ri) => {
-              allReturnedForChallan.push(...parseJSONSafe(ri.device_ids));
-            });
+          // Skip challan if it's in the same month as invoice start date
+          if (
+            invoice.payment_mode === "Prepaid" &&
+            monthDiff(challanDate, invoiceStart) === 0
+          ) {
+            continue;
           }
-        });
 
-        const challanJSON = challan.toJSON();
-        challanJSON.credit_notes = displayChallanNotes;
+          if (!shouldIncludeChallan(challan.order_sale_date, invoice.invoice_start_date)) continue;
 
-        challanJSON.items = challanJSON.items.map((item) => {
-          const originalDeviceIds = parseJSONSafe(item.device_ids);
-          const updatedDeviceIds = filterRemainingDevices(originalDeviceIds, allReturnedForChallan, allSwappedDeviceIds);
-          return {
-            ...item,
-            device_ids: updatedDeviceIds,
-            quantity: updatedDeviceIds.length,
-          };
-        });
+          // Get ALL credit notes for this challan
+          const challanCreditNotes = await CreditNote.findAll({
+            where: {
+              dispatch_order_id: challan.dispatch_order_id,
+              transaction_type: {
+                [Op.ne]: "Asset Swap"
+              }
+            },
+            include: [{
+              model: CreditNoteItem,
+              as: "items"
+            }],
+          });
 
-        challanJSON.times_created_in_invoice = await countDispatchOrderUpToCurrent(
-          challan.dispatch_order_id,
-          invoice.id
-        );
+          // NEW: Apply the same month separation logic to challan credit notes
+          const allChallanCreditNotes = challanCreditNotes.map(note => note.toJSON());
+          const { sameMonthCreditNotes: challanSameMonthNotes, 
+                 differentMonthCreditNotes: challanDifferentMonthNotes } = 
+            separateCreditNotesByMonth(allChallanCreditNotes, invoice.invoice_start_date);
 
-        additionalDeliveryChallans.push(challanJSON);
+          // Collect returned devices from different-month credit notes
+          let allReturnedForChallan = [];
+          challanDifferentMonthNotes.forEach((note) => {
+            if (note.transaction_type !== "Asset Swap") {
+              note.items.forEach((ri) => {
+                allReturnedForChallan.push(...parseJSONSafe(ri.device_ids));
+              });
+            }
+          });
+
+          const challanJSON = challan.toJSON();
+          // Show only same-month credit notes
+          challanJSON.credit_notes = challanSameMonthNotes;
+
+          // Subtract different-month credit notes from items
+          challanJSON.items = challanJSON.items.map((item) => {
+            const originalDeviceIds = parseJSONSafe(item.device_ids);
+            const updatedDeviceIds = filterRemainingDevices(
+              originalDeviceIds, 
+              allReturnedForChallan, 
+              allSwappedDeviceIds
+            );
+            return {
+              ...item,
+              device_ids: updatedDeviceIds,
+              quantity: updatedDeviceIds.length,
+            };
+          });
+
+          challanJSON.times_created_in_invoice = await countDispatchOrderUpToCurrent(
+            challan.dispatch_order_id,
+            invoice.id
+          );
+
+          additionalDeliveryChallans.push(challanJSON);
+        }
       }
     }
 
-    // Main invoice items
+    // Main invoice items - apply the subtraction logic from first version
     const updatedItems = [];
     for (const item of invoice.items) {
       const device_ids = parseJSONSafe(item.device_ids);
       const returned_device_ids = parseJSONSafe(item.returned_device_ids);
 
+      // NEW: Apply the subtraction logic from first version
+      // Only subtract devices from different-month credit notes
       const remaining_device_ids =
         invoice.transaction_type === "Buy" ?
         device_ids :
@@ -3443,6 +3809,7 @@ export const getInvoiceById = async (req, res) => {
     invoiceJSON.items = updatedItems;
     invoiceJSON.order_table_id = order_table_id;
     invoiceJSON.order_date = order_date;
+    // Show only same-month credit notes (from first version approach)
     invoiceJSON.credit_notes = filteredCreditNotes;
     invoiceJSON.asset_swaps = filteredAssetSwaps;
     invoiceJSON.additional_delivery_challans = additionalDeliveryChallans;
@@ -3459,10 +3826,6 @@ export const getInvoiceById = async (req, res) => {
     });
   }
 };
-
-
-
-
 
 
 

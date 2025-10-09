@@ -127,6 +127,11 @@ export default (sequelize, DataTypes) => {
       as: 'asset_swap'
     });
 
+    CreditNote.hasOne(models.AssetTransaction, {
+      foreignKey: 'credit_note_id',
+      as: 'asset_transactions'
+    });
+
 
     // Optional: Add association with DispatchOrder if needed
     // CreditNote.belongsTo(models.DispatchOrder, {

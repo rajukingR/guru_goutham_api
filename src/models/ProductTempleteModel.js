@@ -245,6 +245,11 @@ export default (sequelize, DataTypes) => {
       as: 'order_items'
     });
 
+    ProductTemplete.hasMany(models.AssetTransaction, {
+      foreignKey: "product_id",
+      as: "asset_transactions",
+    });
+
 
   };
 

@@ -5,6 +5,7 @@ import {
   getProductWithAssets,
   getAllAssembledDesktops,
   getProductById,
+  getProductByIdWithTransactions,
   updateProduct,
   deleteProduct,
 } from '../controllers/ProductTempleteController.js';
@@ -19,7 +20,9 @@ router.post('/create', upload.single("product_image"), authMiddleware, createPro
 router.get('/', authMiddleware, getAllProducts);
 router.get('/products-with-assets', authMiddleware, getProductWithAssets);
 router.get('/assembled-desktops', authMiddleware, getAllAssembledDesktops);
-router.get('/:id', authMiddleware, getProductById);
+router.get('/:id', getProductById);
+router.get('/asset-transaction/:id', getProductByIdWithTransactions);
+
 router.put('/:id', upload.single('product_image'), authMiddleware, updateProduct);
 router.delete('/:id', authMiddleware, deleteProduct);
 

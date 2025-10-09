@@ -35,10 +35,7 @@ export const createLead = async (req, res) => {
       payment_type,
       lead_source,
       source_of_enquiry,
-      // rental_duration_months,
-      // rental_duration_days,
-      // rental_start_date,
-      // rental_end_date,
+      
       lead_date,
       owner,
       remarks,

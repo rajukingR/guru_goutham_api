@@ -12,6 +12,8 @@ const Invoice = db.Invoice;
 const InvoiceItem = db.InvoiceItem;
 const Contact = db.Contact;
 const ProductTemplete = db.ProductTemplete;
+const AssetTransaction = db.AssetTransaction;
+
 
 export const createCreditNote = async (req, res) => {
   const t = await db.sequelize.transaction();
@@ -198,6 +200,10 @@ export const getCreditNoteById = async (req, res) => {
         {
           model: Contact,
           as: 'customer'
+        },
+        {
+          model: AssetTransaction,
+          as: 'asset_transactions'
         }
       ]
     });

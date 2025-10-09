@@ -14,7 +14,7 @@ const generateCreditNoteNumber = () => {
   return `${prefix}-${timestamp}-${random}`;
 };
 
-// ✅ Create Asset Swap and Credit Note
+// ✅ Create Asset Swap (with optional Credit Note if client asset)
 export const createAssetSwap = async (req, res) => {
   const transaction = await db.sequelize.transaction();
 
@@ -31,144 +31,159 @@ export const createAssetSwap = async (req, res) => {
       swapped_on
     } = req.body;
 
-    // ✅ Find Delivery Challan Item with this asset_id FIRST
-    const deliveryChallanItem = await DeliveryChallanItem.findOne({
-      where: {
-        product_id: product_id,
-        device_ids: {
-          [db.Sequelize.Op.like]: `%${asset_id}%`
-        }
-      }
-    }, {
-      transaction
-    });
+    let assetSwap = null;
+    let creditNote = null;
 
-    if (!deliveryChallanItem) {
-      await transaction.rollback();
-      return res.status(404).json({
-        message: "Delivery challan item not found for this asset",
-        asset_id
-      });
+    // 🚨 CASE 1: Warehouse asset → ONLY AssetSwap
+    if (show_warehouse_assets) {
+      assetSwap = await AssetSwap.create(
+        {
+          product_id,
+          asset_id,
+          product_name,
+          purchase_price,
+          rent_price_per_month,
+          show_client_assets,
+          show_warehouse_assets,
+          reason,
+          swapped_on,
+          credit_note_id: null
+        },
+        { transaction }
+      );
+
+    } else {
+      // 🚨 CASE 2: Client asset → Full flow (Challan + Credit Note)
+      const deliveryChallanItem = await DeliveryChallanItem.findOne(
+        {
+          where: {
+            product_id,
+            device_ids: { [db.Sequelize.Op.like]: `%${asset_id}%` }
+          }
+        },
+        { transaction }
+      );
+
+      if (!deliveryChallanItem) {
+        await transaction.rollback();
+        return res.status(404).json({
+          message: "Delivery challan item not found for this asset",
+          asset_id
+        });
+      }
+
+      const deliveryChallan = await DeliveryChallan.findOne(
+        { where: { id: deliveryChallanItem.challan_id } },
+        { transaction }
+      );
+
+      if (!deliveryChallan) {
+        await transaction.rollback();
+        return res.status(404).json({
+          message: "Delivery challan not found",
+          challan_id: deliveryChallanItem.challan_id
+        });
+      }
+
+      // ✅ Create Credit Note
+      const creditNoteData = {
+        credit_note_number: generateCreditNoteNumber(),
+        credit_note_title: `Credit Note for Asset Swap - ${asset_id}`,
+        industry: deliveryChallan.industry || "",
+        transaction_type: "Asset Swap",
+        payment_type: deliveryChallan.payment_type || "Prepaid",
+        dispatch_order_number: deliveryChallan.dispatch_order_number,
+        dispatch_order_id: deliveryChallan.dispatch_order_id,
+        dc_date: deliveryChallan.dc_date,
+        customer_id: deliveryChallan.customer_code,
+        customer_name: deliveryChallan.shipping_name,
+        email: deliveryChallan.email,
+        shipping_name: deliveryChallan.shipping_name,
+        pincode: deliveryChallan.pincode,
+        pan: deliveryChallan.pan_number,
+        tin: deliveryChallan.gst_number,
+        amount:
+          deliveryChallanItem.total_price || deliveryChallanItem.unit_price,
+        reference: `AssetSwap-${Date.now()}-${asset_id}`,
+        returned_date: swapped_on,
+        rental_end_date: swapped_on,
+        created_by: req.user?.id || "system",
+        status: "Generated",
+        print_credit_note: true,
+        collected_person_name: deliveryChallan.delivery_person_name,
+        collected_person_no: deliveryChallan.delivery_person_phone_number,
+        vehicle_no: deliveryChallan.vehicle_number
+      };
+
+      creditNote = await CreditNote.create(creditNoteData, { transaction });
+
+      // ✅ Create Asset Swap linked with Credit Note
+      assetSwap = await AssetSwap.create(
+        {
+          product_id,
+          asset_id,
+          product_name,
+          purchase_price,
+          rent_price_per_month,
+          show_client_assets,
+          show_warehouse_assets,
+          reason,
+          swapped_on,
+          credit_note_id: creditNote.id
+        },
+        { transaction }
+      );
+
+      // ✅ Update credit note reference with AssetSwap ID
+      await creditNote.update(
+        { reference: `AssetSwap-${assetSwap.id}-${asset_id}` },
+        { transaction }
+      );
+
+      // ✅ Add Credit Note Item
+      await CreditNoteItem.create(
+        {
+          credit_note_id: creditNote.id,
+          product_id: deliveryChallanItem.product_id,
+          product_name: deliveryChallanItem.product_name,
+          quantity: 1,
+          unit_price: deliveryChallanItem.unit_price,
+          total_price: deliveryChallanItem.unit_price,
+          device_ids: [asset_id],
+          reason
+        },
+        { transaction }
+      );
     }
 
-    // ✅ Get Delivery Challan details
-    const deliveryChallan = await DeliveryChallan.findOne({
-      where: {
-        id: deliveryChallanItem.challan_id
-      }
-    }, {
-      transaction
-    });
-
-    if (!deliveryChallan) {
-      await transaction.rollback();
-      return res.status(404).json({
-        message: "Delivery challan not found",
-        challan_id: deliveryChallanItem.challan_id
-      });
-    }
-
-    // ✅ Create Credit Note FIRST
-    const creditNoteReference = `AssetSwap-${Date.now()}-${asset_id}`;
-
-    const creditNoteData = {
-      credit_note_number: generateCreditNoteNumber(),
-      credit_note_title: `Credit Note for Asset Swap - ${asset_id}`,
-      industry: deliveryChallan.industry || '',
-      transaction_type: 'Asset Swap',
-      payment_type: deliveryChallan.payment_type || 'Prepaid',
-      dispatch_order_number: deliveryChallan.dispatch_order_number,
-      dispatch_order_id: deliveryChallan.dispatch_order_id,
-      dc_date: deliveryChallan.dc_date,
-      customer_id: deliveryChallan.customer_code,
-      customer_name: deliveryChallan.shipping_name,
-      email: deliveryChallan.email,
-      shipping_name: deliveryChallan.shipping_name,
-      pincode: deliveryChallan.pincode,
-      pan: deliveryChallan.pan_number,
-      tin: deliveryChallan.gst_number,
-      amount: deliveryChallanItem.total_price || deliveryChallanItem.unit_price,
-      reference: creditNoteReference,
-      returned_date: swapped_on,
-      rental_end_date: swapped_on,
-      created_by: req.user?.id || 'system',
-      status: 'Generated',
-      print_credit_note: true,
-      collected_person_name: deliveryChallan.delivery_person_name,
-      collected_person_no: deliveryChallan.delivery_person_phone_number,
-      vehicle_no: deliveryChallan.vehicle_number
-    };
-
-    const creditNote = await CreditNote.create(creditNoteData, {
-      transaction
-    });
-
-    // ✅ NOW Create Asset Swap with credit_note_id
-    const assetSwap = await AssetSwap.create({
-      product_id,
-      asset_id,
-      product_name,
-      purchase_price,
-      rent_price_per_month,
-      show_client_assets,
-      show_warehouse_assets,
-      reason,
-      swapped_on,
-      credit_note_id: creditNote.id, // Now this will work
-    }, {
-      transaction
-    });
-
-    // ✅ Update the Credit Note reference to include the actual assetSwap ID
-    await creditNote.update({
-      reference: `AssetSwap-${assetSwap.id}-${asset_id}`
-    }, {
-      transaction
-    });
-
-    // ✅ Create Credit Note Item
-    const creditNoteItemData = {
-      credit_note_id: creditNote.id,
-      product_id: deliveryChallanItem.product_id,
-      product_name: deliveryChallanItem.product_name,
-      quantity: 1,
-      unit_price: deliveryChallanItem.unit_price,
-      total_price: deliveryChallanItem.unit_price,
-      device_ids: [asset_id],
-      reason: reason
-    };
-
-    await CreditNoteItem.create(creditNoteItemData, {
-      transaction
-    });
-
-    // ✅ Commit transaction
     await transaction.commit();
 
-    // ✅ Fetch the complete data with associations
+    // ✅ Final Fetch
     const completeAssetSwap = await AssetSwap.findByPk(assetSwap.id);
-    const completeCreditNote = await CreditNote.findByPk(creditNote.id, {
-      include: [{
-        model: CreditNoteItem,
-        as: 'items'
-      }]
-    });
+    let completeCreditNote = null;
+    if (creditNote) {
+      completeCreditNote = await CreditNote.findByPk(creditNote.id, {
+        include: [{ model: CreditNoteItem, as: "items" }]
+      });
+    }
 
     res.status(201).json({
-      message: "Asset swap and credit note created successfully",
+      message: show_warehouse_assets
+        ? "Asset swap created successfully (warehouse asset only)"
+        : "Asset swap and credit note created successfully",
       assetSwap: completeAssetSwap,
       creditNote: completeCreditNote
     });
-
   } catch (error) {
     await transaction.rollback();
-    console.error("❌ Error creating asset swap and credit note:", error);
+    console.error("❌ Error creating asset swap:", error);
     res.status(500).json({
-      message: "Error creating asset swap and credit note",
-      error: error.message,
+      message: "Error creating asset swap",
+      error: error.message
     });
   }
 };
+
 
 // ✅ Get all Asset Swaps (FIXED - no incorrect associations)
 export const getAssetSwaps = async (req, res) => {

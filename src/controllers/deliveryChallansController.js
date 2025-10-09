@@ -17,6 +17,7 @@ const {
 const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
 const AssetSwap = db.AssetSwap;
+const AssetTransaction = db.AssetTransaction;
 
 // Create Delivery Challan 
 export const createDeliveryChallan = async (req, res) => {
@@ -635,9 +636,7 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
 
 
 export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res) => {
-  const {
-    customer_code
-  } = req.params;
+  const { customer_code } = req.params;
 
   function parseDeviceIds(deviceIdsRaw) {
     if (!deviceIdsRaw) return [];
@@ -655,12 +654,9 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
       where: {
         customer_code,
         peripheral_update: true,
-        [Op.or]: [{
-            defualt_dc: false
-          }, // keep false
-          {
-            defualt_dc: null
-          } // keep null if column is nullable
+        [Op.or]: [
+          { defualt_dc: false }, // keep false
+          { defualt_dc: null } // keep null if column is nullable
         ]
       },
       attributes: ["id", "dc_id", "customer_code", "peripheral_update", "defualt_dc"],
@@ -692,37 +688,59 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
           "rent_price_per_month",
           "capacity"
         ],
-      }, ],
+      }],
     });
 
-    const response = challanItems.map((item) => ({
-      id: item.id,
-      challan_id: item.challan_id,
-      product_id: item.product_id,
-      product_name: item.product_name,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      total_price: item.total_price,
-      device_ids: parseDeviceIds(item.device_ids),
-      created_at: item.created_at,
-      updated_at: item.updated_at,
+    // ✅ Step 2: Get all asset_ids that already exist in asset_transactions for this customer
+    const existingAssetTransactions = await AssetTransaction.findAll({
+      where: {
+        status: 'Added' // Only consider active assets
+      },
+      attributes: ['asset_id'],
+      raw: true
+    });
 
-      product: item.product ?
-        {
-          id: item.product.id,
-          product_name: item.product.product_name,
-          product_category: item.product.product_category,
-          ram: item.product.ram,
-          storage: item.product.storage,
-          disk_type: item.product.disk_type,
-          brand: item.product.brand,
-          model: item.product.model,
-          purchase_price: item.product.purchase_price,
-          rent_price_per_month: item.product.rent_price_per_month,
-          capacity: item.product.capacity,
-        } :
-        null,
-    }));
+    const existingAssetIds = existingAssetTransactions.map(transaction => transaction.asset_id);
+
+    // ✅ Step 3: Filter device_ids by removing those that exist in asset_transactions
+    // ✅ Step 4: Also filter out items that end up with empty device_ids array
+    const response = challanItems.map((item) => {
+      const deviceIds = parseDeviceIds(item.device_ids);
+      const availableDeviceIds = deviceIds.filter(deviceId => 
+        !existingAssetIds.includes(deviceId)
+      );
+
+      return {
+        id: item.id,
+        challan_id: item.challan_id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        total_price: item.total_price,
+        device_ids: availableDeviceIds, // Only unavailable device IDs
+        available_quantity: availableDeviceIds.length, // New field showing available count
+        total_quantity: deviceIds.length, // Original quantity for reference
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+
+        product: item.product ?
+          {
+            id: item.product.id,
+            product_name: item.product.product_name,
+            product_category: item.product.product_category,
+            ram: item.product.ram,
+            storage: item.product.storage,
+            disk_type: item.product.disk_type,
+            brand: item.product.brand,
+            model: item.product.model,
+            purchase_price: item.product.purchase_price,
+            rent_price_per_month: item.product.rent_price_per_month,
+            capacity: item.product.capacity,
+          } :
+          null,
+      };
+    }).filter(item => item.device_ids.length > 0); // ✅ Only include items with non-empty device_ids
 
     return res.status(200).json(response);
   } catch (error) {

@@ -44,8 +44,15 @@ export default (sequelize, DataTypes) => {
     },
     credit_note_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true, // ✅ allow null
+      references: {
+        model: 'credit_notes', // table name
+        key: 'id'
+      },
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE'
     },
+
   }, {
     tableName: 'asset_swaps',
     timestamps: true,

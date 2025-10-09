@@ -49,6 +49,7 @@ import serviceChargesRoutes from "./routes/serviceChargesRoutes.js";
 import assetSwapRoutes from "./routes/assetSwapRoutes.js";
 import branchesRoutes from "./routes/BranchesRoutes.js";
 import createBackup from "../src/utils/dbBackups.js";
+import assetTransactionRoutes from "./routes/assetTransactionRoutes.js";
 
 import {
   fileURLToPath
@@ -146,6 +147,7 @@ app.use("/api/peripheral-assets", peripheralRoutes);
 app.use('/api/courier-charges', courierChargesRoutes);
 app.use("/api/service-charges", serviceChargesRoutes);
 app.use("/api/asset-swaps", assetSwapRoutes);
+app.use("/api/asset-transactions", assetTransactionRoutes);
 
 
 // EVEVRYDAY BACKUP CODE 

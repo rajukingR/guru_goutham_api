@@ -22,6 +22,7 @@ const DeliveryChallanItem = db.DeliveryChallanItem;
 const Peripheral = db.Peripheral;
 const PeripheralItem = db.PeripheralItem;
 const AssetSwap = db.AssetSwap;
+const AssetTransaction = db.AssetTransaction;
 
 
 export const createInvoice = async (req, res) => {
@@ -3202,7 +3203,7 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 //     let allReturnedFromCreditNotes = [];
 //     let additionalDeliveryChallans = [];
 //     const sameMonth = monthDiff(invoiceDcDate, invoiceStart) === 0;
-    
+
 
 //     let filteredAssetSwaps = [];
 //     let allSwappedDeviceIds = [];
@@ -3216,7 +3217,7 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 //           },
 //         },
 //       });
-      
+
 //       // Build complete list of swapped device IDs
 //       allSwappedDeviceIds = allAssetSwaps.map(swap => swap.asset_id);
 
@@ -3411,7 +3412,7 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 //       }
 
 //       }
-      
+
 //     }
 
 //     // Main invoice items
@@ -3477,7 +3478,9 @@ export const getInvoicesByInvoiceId = async (req, res) => {
 
 export const getInvoiceById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const {
+      id
+    } = req.params;
 
     // Helpers
     const monthDiff = (date1, date2) =>
@@ -3545,7 +3548,7 @@ export const getInvoiceById = async (req, res) => {
       const invoiceStart = new Date(invoiceStartDate);
       const invoiceStartMonth = invoiceStart.getMonth();
       const invoiceStartYear = invoiceStart.getFullYear();
-      
+
       const sameMonthCreditNotes = [];
       const differentMonthCreditNotes = [];
 
@@ -3556,15 +3559,18 @@ export const getInvoiceById = async (req, res) => {
         const returnedMonth = returnedDate.getMonth();
         const returnedYear = returnedDate.getFullYear();
 
-        if (returnedMonth === invoiceStartMonth && 
-            returnedYear === invoiceStartYear) {
+        if (returnedMonth === invoiceStartMonth &&
+          returnedYear === invoiceStartYear) {
           sameMonthCreditNotes.push(note);
         } else {
           differentMonthCreditNotes.push(note);
         }
       });
 
-      return { sameMonthCreditNotes, differentMonthCreditNotes };
+      return {
+        sameMonthCreditNotes,
+        differentMonthCreditNotes
+      };
     };
 
     // Fetch invoice
@@ -3588,6 +3594,10 @@ export const getInvoiceById = async (req, res) => {
       message: "Invoice not found"
     });
 
+
+
+
+
     // Count how many times main invoice's dispatch_order_id was created up to this invoice
     const mainDispatchOrderCount = await countDispatchOrderUpToCurrent(invoice.dispatch_order_id, invoice.id);
 
@@ -3605,9 +3615,23 @@ export const getInvoiceById = async (req, res) => {
     let allReturnedFromCreditNotes = [];
     let additionalDeliveryChallans = [];
     const sameMonth = monthDiff(invoiceDcDate, invoiceStart) === 0;
-    
+
     let filteredAssetSwaps = [];
     let allSwappedDeviceIds = [];
+
+
+    // Fetch asset transactions for this invoice/customer
+    let invoiceDeviceIds = invoice.items.flatMap((it) => parseJSONSafe(it.device_ids));
+
+
+    additionalDeliveryChallans.forEach(ch => {
+      ch.items.forEach(it => {
+        invoiceDeviceIds.push(...parseJSONSafe(it.device_ids));
+      });
+    });
+
+
+
 
     if (invoice.transaction_type !== "Buy") {
       // Get ALL asset swaps first to build complete list of swapped devices
@@ -3618,7 +3642,7 @@ export const getInvoiceById = async (req, res) => {
           },
         },
       });
-      
+
       // Build complete list of swapped device IDs
       allSwappedDeviceIds = allAssetSwaps.map(swap => swap.asset_id);
 
@@ -3627,7 +3651,7 @@ export const getInvoiceById = async (req, res) => {
         where: {
           dispatch_order_id: invoice.dispatch_order_id,
           transaction_type: {
-            [Op.ne]: "Asset Swap"
+            [Op.notIn]: ["Asset Swap", "Asset Removed"]
           }
         },
         include: [{
@@ -3638,15 +3662,18 @@ export const getInvoiceById = async (req, res) => {
 
       // NEW: Apply the first version's approach to separate credit notes
       const allCreditNotesJSON = allCreditNotes.map(note => note.toJSON());
-      const { sameMonthCreditNotes, differentMonthCreditNotes } = 
-        separateCreditNotesByMonth(allCreditNotesJSON, invoice.invoice_start_date);
-      
+      const {
+        sameMonthCreditNotes,
+        differentMonthCreditNotes
+      } =
+      separateCreditNotesByMonth(allCreditNotesJSON, invoice.invoice_start_date);
+
       // Use the same-month credit notes for display
       filteredCreditNotes = sameMonthCreditNotes;
-      
+
       // Collect returned devices from different-month credit notes for subtraction
       differentMonthCreditNotes.forEach((note) => {
-        if (note.transaction_type !== "Asset Swap") {
+        if (note.transaction_type !== "Asset Swap" || note.transaction_type !== "Asset Removed") {
           note.items.forEach((ri) => {
             allReturnedFromCreditNotes.push(...parseJSONSafe(ri.device_ids));
           });
@@ -3713,8 +3740,8 @@ export const getInvoiceById = async (req, res) => {
             where: {
               dispatch_order_id: challan.dispatch_order_id,
               transaction_type: {
-                [Op.ne]: "Asset Swap"
-              }
+            [Op.notIn]: ["Asset Swap", "Asset Removed"]
+          }
             },
             include: [{
               model: CreditNoteItem,
@@ -3724,14 +3751,16 @@ export const getInvoiceById = async (req, res) => {
 
           // NEW: Apply the same month separation logic to challan credit notes
           const allChallanCreditNotes = challanCreditNotes.map(note => note.toJSON());
-          const { sameMonthCreditNotes: challanSameMonthNotes, 
-                 differentMonthCreditNotes: challanDifferentMonthNotes } = 
-            separateCreditNotesByMonth(allChallanCreditNotes, invoice.invoice_start_date);
+          const {
+            sameMonthCreditNotes: challanSameMonthNotes,
+            differentMonthCreditNotes: challanDifferentMonthNotes
+          } =
+          separateCreditNotesByMonth(allChallanCreditNotes, invoice.invoice_start_date);
 
           // Collect returned devices from different-month credit notes
           let allReturnedForChallan = [];
           challanDifferentMonthNotes.forEach((note) => {
-            if (note.transaction_type !== "Asset Swap") {
+            if (note.transaction_type !== "Asset Swap" || note.transaction_type !== "Asset Removed") {
               note.items.forEach((ri) => {
                 allReturnedForChallan.push(...parseJSONSafe(ri.device_ids));
               });
@@ -3739,15 +3768,21 @@ export const getInvoiceById = async (req, res) => {
           });
 
           const challanJSON = challan.toJSON();
+
+          challanJSON.items.forEach((it) => {
+            invoiceDeviceIds.push(...parseJSONSafe(it.device_ids));
+          });
+
           // Show only same-month credit notes
           challanJSON.credit_notes = challanSameMonthNotes;
 
           // Subtract different-month credit notes from items
           challanJSON.items = challanJSON.items.map((item) => {
             const originalDeviceIds = parseJSONSafe(item.device_ids);
+            invoiceDeviceIds.push(...originalDeviceIds);
             const updatedDeviceIds = filterRemainingDevices(
-              originalDeviceIds, 
-              allReturnedForChallan, 
+              originalDeviceIds,
+              allReturnedForChallan,
               allSwappedDeviceIds
             );
             return {
@@ -3766,6 +3801,30 @@ export const getInvoiceById = async (req, res) => {
         }
       }
     }
+
+
+    // Fetch from DB
+    let assetTransactions = await AssetTransaction.findAll({
+      where: {
+        customer_id: invoice.customer_id,
+        parent_asset_id: {
+          [Op.in]: invoiceDeviceIds
+        }
+      }
+    });
+
+    // Optionally filter for Prepaid/Postpaid months
+    assetTransactions = assetTransactions.filter((txn) => {
+      const actionDate = new Date(txn.action_date);
+      const txnMonth = actionDate.getMonth();
+      const txnYear = actionDate.getFullYear();
+      const invoiceMonth = invoiceStart.getMonth();
+      const invoiceYear = invoiceStart.getFullYear();
+
+      
+      return true;
+    });
+
 
     // Main invoice items - apply the subtraction logic from first version
     const updatedItems = [];
@@ -3816,7 +3875,7 @@ export const getInvoiceById = async (req, res) => {
     invoiceJSON.rental_start_date = invoice.rental_start_date;
     invoiceJSON.rental_end_date = invoice.rental_end_date;
     invoiceJSON.times_created_in_invoice = mainDispatchOrderCount;
-
+    invoiceJSON.asset_transactions = assetTransactions.map((t) => t.toJSON());
     return res.status(200).json(invoiceJSON);
   } catch (error) {
     console.error("Error fetching invoice:", error);

@@ -1,9 +1,13 @@
 import db from '../models/index.js';
+import {
+  Op
+} from "sequelize";
 
 const ProductTemplete = db.ProductTemplete;
 const GoodsReceiptItem = db.GoodsReceiptItem;
 const AssembledComponent = db.AssembledComponent;
 const AssetIdComponent = db.AssetIdComponent;
+const AssetTransaction = db.AssetTransaction;
 
 // Create a new product
 export const createProduct = async (req, res) => {
@@ -85,7 +89,9 @@ export const getProductWithAssets = async (req, res) => {
     const requiresCapacity = capacityComponents.includes(product_category);
     const isWifiRouter = product_category === 'Wi-Fi';
 
-    const where = { product_category };
+    const where = {
+      product_category
+    };
 
     if (product_category === 'RAM' && ramType) where.ramType = ramType;
     if (brand) where.brand = brand;
@@ -93,7 +99,10 @@ export const getProductWithAssets = async (req, res) => {
     if (isWifiRouter && frequency_band) where.frequency_band = frequency_band;
     if (isWifiRouter && wifi_standard) where.wifi_standard = wifi_standard;
 
-    const products = await ProductTemplete.findAll({ where, raw: true });
+    const products = await ProductTemplete.findAll({
+      where,
+      raw: true
+    });
 
     if (products.length === 0) {
       return res.json([]);
@@ -128,12 +137,19 @@ export const getProductWithAssets = async (req, res) => {
       products.forEach(product => {
         let capValue = '';
         switch (product_category) {
-          case 'RAM': capValue = product.sizeGb || product.ram; break;
+          case 'RAM':
+            capValue = product.sizeGb || product.ram;
+            break;
           case 'HDD':
           case 'Storage Drive':
-          case 'SSD': capValue = product.storage || product.capacity; break;
-          case 'SMPS': capValue = product.capacity || product.smps || product.wattage || ''; break;
-          default: capValue = product.capacity || '';
+          case 'SSD':
+            capValue = product.storage || product.capacity;
+            break;
+          case 'SMPS':
+            capValue = product.capacity || product.smps || product.wattage || '';
+            break;
+          default:
+            capValue = product.capacity || '';
         }
         if (capValue && !capacities.includes(capValue)) capacities.push(capValue);
       });
@@ -146,11 +162,18 @@ export const getProductWithAssets = async (req, res) => {
       filteredProducts = products.filter(product => {
         let productCapacity = '';
         switch (product_category) {
-          case 'RAM': productCapacity = product.sizeGb || product.ram; break;
+          case 'RAM':
+            productCapacity = product.sizeGb || product.ram;
+            break;
           case 'HDD':
-          case 'Storage Drive': productCapacity = product.storage || product.capacity; break;
-          case 'SMPS': productCapacity = product.capacity || product.smps || product.wattage || ''; break;
-          default: productCapacity = product.capacity || '';
+          case 'Storage Drive':
+            productCapacity = product.storage || product.capacity;
+            break;
+          case 'SMPS':
+            productCapacity = product.capacity || product.smps || product.wattage || '';
+            break;
+          default:
+            productCapacity = product.capacity || '';
         }
         return productCapacity === effectiveCapacity;
       });
@@ -159,7 +182,9 @@ export const getProductWithAssets = async (req, res) => {
     // Get only products that are present in goods_receipt_items
     const productIds = filteredProducts.map(p => p.id);
     const receiptItems = await GoodsReceiptItem.findAll({
-      where: { product_id: productIds },
+      where: {
+        product_id: productIds
+      },
       raw: true
     });
     const validProductIds = new Set(receiptItems.map(item => item.product_id));
@@ -167,14 +192,18 @@ export const getProductWithAssets = async (req, res) => {
 
     // Get assembled components (to exclude asset_ids used in assemblies)
     const assembledComponents = await AssembledComponent.findAll({
-      where: { product_id: productIds },
+      where: {
+        product_id: productIds
+      },
       raw: true
     });
     const usedInAssemblies = new Set(assembledComponents.map(c => c.asset_id));
 
     // 🔹 Get AssetIdComponents (to exclude asset_ids used as components)
     const assetIdComponents = await AssetIdComponent.findAll({
-      where: { product_id: productIds },
+      where: {
+        product_id: productIds
+      },
       raw: true
     });
     const usedInAssetComponents = new Set(assetIdComponents.map(c => c.asset_id));
@@ -185,15 +214,15 @@ export const getProductWithAssets = async (req, res) => {
       if (!validProductIds.has(item.product_id)) return;
 
       try {
-        const ids = typeof item.asset_ids === 'string'
-          ? JSON.parse(item.asset_ids)
-          : Array.isArray(item.asset_ids) ? item.asset_ids : [];
+        const ids = typeof item.asset_ids === 'string' ?
+          JSON.parse(item.asset_ids) :
+          Array.isArray(item.asset_ids) ? item.asset_ids : [];
 
         if (!assetMap[item.product_id]) assetMap[item.product_id] = [];
 
-        const availableAssets = ids.filter(id => 
-          !usedInAssemblies.has(id) && 
-          !usedInAssetComponents.has(id)   // 🔹 new filter
+        const availableAssets = ids.filter(id =>
+          !usedInAssemblies.has(id) &&
+          !usedInAssetComponents.has(id) // 🔹 new filter
         );
 
         assetMap[item.product_id].push(...availableAssets);
@@ -211,7 +240,9 @@ export const getProductWithAssets = async (req, res) => {
 
   } catch (error) {
     console.error('Error in getProductWithAssets:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message
+    });
   }
 };
 
@@ -265,6 +296,65 @@ export const getProductById = async (req, res) => {
     });
   }
 };
+
+
+
+export const getProductByIdWithTransactions = async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const parentAssetId = req.query.asset_id; // <-- get from query
+
+    if (!parentAssetId) {
+      return res.status(400).json({ message: "asset_id query parameter is required" });
+    }
+
+    // Fetch product template
+    const product = await ProductTemplete.findByPk(productId);
+    if (!product) {
+      return res.status(404).json({
+        message: "Product not found"
+      });
+    }
+
+    // Fetch all AssetTransactions for this product and parent_asset_id
+    const assetTransactions = await AssetTransaction.findAll({
+      where: {
+        product_id: productId,
+        parent_asset_id: parentAssetId
+      },
+      order: [["created_at", "DESC"]],
+    });
+
+    // Compute itemsInfo based on transactions with size AND status "Removed"
+    const itemsInfo = {
+      ram: assetTransactions.some(
+        t => t.item_type === "ram" && t.status === "Removed"
+      ) || false,
+      processor_model: assetTransactions.some(
+        t => t.item_type === "processor" && t.status === "Removed"
+      ) || false,
+      storage: assetTransactions.some(
+        t => t.item_type === "storage" && t.status === "Removed"
+      ) || false,
+    };
+
+    res.status(200).json({
+      ...product.toJSON(),
+      itemsInfo,
+      assetTransactions, // all related transactions
+    });
+
+  } catch (error) {
+    console.error("Sequelize error:", error);
+    res.status(500).json({
+      message: "Error fetching product",
+      error: error.message || error,
+    });
+  }
+};
+
+
+
 
 // Update product
 export const updateProduct = async (req, res) => {

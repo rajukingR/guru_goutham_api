@@ -667,15 +667,20 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
           item.dataValues.device_ids = item.dataValues.device_ids?.filter(
             (id) => !swappedAssetIds.includes(id)
           );
-          // also reduce quantity if needed
           item.dataValues.quantity = Math.max(
             0,
             item.dataValues.device_ids?.length || 0
           );
         }
+
+        // --- 5.4 ✅ Final device-based quantity correction ---
+        if (!item.dataValues.device_ids || item.dataValues.device_ids.length === 0) {
+          item.dataValues.quantity = 0;
+        } else {
+          item.dataValues.quantity = item.dataValues.device_ids.length;
+        }
       }
     }
-
     // Step 6: Merge Quotations (direct invoices) into result
     const formattedQuotations = directInvoiceQuotations.map((q) => {
       return {

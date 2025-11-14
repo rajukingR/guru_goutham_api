@@ -32,6 +32,9 @@ export default (sequelize, DataTypes) => {
     order_number: {
       type: DataTypes.STRING,
     },
+    uploaded_dc: {
+      type: DataTypes.STRING,
+    },
     dc_date: {
       type: DataTypes.DATEONLY,
     },
@@ -146,6 +149,28 @@ export default (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: false,
     },
+
+    mouse_qty: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    cable_qty: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    bag_qty: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    others_qty: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+
     defualt_dc: {
       type: DataTypes.BOOLEAN,
       allowNull: false,

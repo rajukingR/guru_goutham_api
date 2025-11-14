@@ -221,198 +221,140 @@ export const createAssetTransaction = async (req, res) => {
       action_date,
       itemDetails,
       price,
-      status
+      status,
     } = req.body;
 
     const item_name = itemDetails?.name || null;
     const specification = itemDetails?.specification || null;
     const item_type = itemDetails?.type || null;
-
-    // Check for existing transaction
-    let existingTransaction = await AssetTransaction.findOne({
-      where: { asset_id }
-    });
+    const is_default = itemDetails?.isDefault || null; // 👈 map payload key to DB column
 
     let targetTransaction = null;
     let creditNote = null;
 
-    if (existingTransaction) {
-      // ✅ Update existing transaction
-      await existingTransaction.update(
-        {
-          customer_id,
-          product_id,
-          parent_asset_id,
-          asset_id,
-          size,
-          action_date,
-          item_name,
-          specification,
-          item_type,
-          price,
-          status
-        },
-        { transaction }
-      );
-      targetTransaction = existingTransaction;
-    } else {
-      // ✅ Create new transaction
-      targetTransaction = await AssetTransaction.create(
-        {
-          customer_id,
-          product_id,
-          parent_asset_id,
-          asset_id,
-          size,
-          action_date,
-          item_name,
-          specification,
-          item_type,
-          price,
-          status
-        },
-        { transaction }
-      );
-    }
+    // ✅ Always CREATE a new AssetTransaction record (no update logic)
+    targetTransaction = await AssetTransaction.create(
+      {
+        customer_id,
+        product_id,
+        parent_asset_id,
+        asset_id,
+        size,
+        action_date,
+        item_name,
+        specification,
+        item_type,
+        price,
+        status,
+        is_default,
+      },
+      { transaction }
+    );
 
-    // ✅ Handle Credit Note if status = "Removed"
+    // ✅ Each time "Removed" → Create a NEW Credit Note
     if (status === "Removed") {
-      if (targetTransaction.credit_note_id) {
-        // Update existing credit note
-        creditNote = await CreditNote.findByPk(
-          targetTransaction.credit_note_id
-        );
-        if (creditNote) {
-          await creditNote.update(
-            {
-              returned_date: action_date,
-              rental_end_date: action_date,
-              amount: price,
-              status: "Generated",
-              updated_at: new Date()
-            },
-            { transaction }
-          );
-
-          const creditNoteItem = await CreditNoteItem.findOne({
-            where: { credit_note_id: creditNote.id }
-          });
-          if (creditNoteItem) {
-            await creditNoteItem.update(
-              {
-                unit_price: price,
-                total_price: price,
-                device_ids: [asset_id],
-                reason: "Asset updated / removed"
-              },
-              { transaction }
-            );
-          }
-        }
-      } else {
-        // Create new credit note
-        const deliveryChallanItem = await DeliveryChallanItem.findOne({
-          where: {
-            product_id,
-            device_ids: {
-              [db.Sequelize.Op.like]: `%${parent_asset_id}%`
-            }
-          }
-        });
-
-        if (!deliveryChallanItem) {
-          await transaction.rollback();
-          return res.status(404).json({
-            message: "Delivery challan item not found for this asset",
-            asset_id
-          });
-        }
-
-        const deliveryChallan = await DeliveryChallan.findOne({
-          where: { id: deliveryChallanItem.challan_id }
-        });
-
-        if (!deliveryChallan) {
-          await transaction.rollback();
-          return res.status(404).json({
-            message: "Delivery challan not found",
-            challan_id: deliveryChallanItem.challan_id
-          });
-        }
-
-        creditNote = await CreditNote.create(
-          {
-            credit_note_number: generateCreditNoteNumber(),
-            credit_note_title: `Credit Note for Asset Removed - ${asset_id}`,
-            industry: deliveryChallan.industry || "",
-            transaction_type: "Asset Removed",
-            payment_type: deliveryChallan.payment_type,
-            dispatch_order_number: deliveryChallan.dispatch_order_number,
-            dispatch_order_id: deliveryChallan.dispatch_order_id,
-            dc_date: deliveryChallan.dc_date,
-            customer_id: deliveryChallan.customer_code,
-            customer_name: deliveryChallan.shipping_name,
-            email: deliveryChallan.email,
-            shipping_name: deliveryChallan.shipping_name,
-            pincode: deliveryChallan.pincode,
-            pan: deliveryChallan.pan_number,
-            tin: deliveryChallan.gst_number,
-            amount:
-              deliveryChallanItem.total_price ||
-              deliveryChallanItem.unit_price,
-            reference: `AssetRemoved-${Date.now()}-${asset_id}`,
-            returned_date: action_date,
-            rental_end_date: action_date,
-            created_by: req.user?.id || "system",
-            status: "Generated",
-            print_credit_note: true,
-            collected_person_name: deliveryChallan.delivery_person_name,
-            collected_person_no:
-              deliveryChallan.delivery_person_phone_number,
-            vehicle_no: deliveryChallan.vehicle_number
+      const deliveryChallanItem = await DeliveryChallanItem.findOne({
+        where: {
+          product_id,
+          device_ids: {
+            [db.Sequelize.Op.like]: `%${parent_asset_id}%`,
           },
-          { transaction }
-        );
+        },
+      });
 
-        await CreditNoteItem.create(
-          {
-            credit_note_id: creditNote.id,
-            product_id: deliveryChallanItem.product_id,
-            product_name: deliveryChallanItem.product_name,
-            quantity: 1,
-            unit_price: price,
-            total_price: price,
-            device_ids: [asset_id],
-            reason: "Asset was removed"
-          },
-          { transaction }
-        );
-
-        // Link credit note to transaction
-        await targetTransaction.update(
-          { credit_note_id: creditNote.id },
-          { transaction }
-        );
+      if (!deliveryChallanItem) {
+        await transaction.rollback();
+        return res.status(404).json({
+          message: "Delivery challan item not found for this asset",
+          asset_id,
+        });
       }
+
+      const deliveryChallan = await DeliveryChallan.findOne({
+        where: { id: deliveryChallanItem.challan_id },
+      });
+
+      if (!deliveryChallan) {
+        await transaction.rollback();
+        return res.status(404).json({
+          message: "Delivery challan not found",
+          challan_id: deliveryChallanItem.challan_id,
+        });
+      }
+
+      // ✅ Always create a new Credit Note (no checking for existing)
+      creditNote = await CreditNote.create(
+        {
+          credit_note_number: generateCreditNoteNumber(),
+          credit_note_title: `Credit Note for Asset Removed - ${asset_id}`,
+          industry: deliveryChallan.industry || "",
+          transaction_type: "Asset Removed",
+          payment_type: deliveryChallan.payment_type,
+          dispatch_order_number: deliveryChallan.dispatch_order_number,
+          dispatch_order_id: deliveryChallan.dispatch_order_id,
+          dc_date: deliveryChallan.dc_date,
+          customer_id: deliveryChallan.customer_code,
+          customer_name: deliveryChallan.shipping_name,
+          email: deliveryChallan.email,
+          shipping_name: deliveryChallan.shipping_name,
+          pincode: deliveryChallan.pincode,
+          pan: deliveryChallan.pan_number,
+          tin: deliveryChallan.gst_number,
+          amount:
+            deliveryChallanItem.total_price ||
+            deliveryChallanItem.unit_price,
+          reference: `AssetRemoved-${Date.now()}-${asset_id}`,
+          returned_date: action_date,
+          rental_end_date: action_date,
+          created_by: req.user?.id || "system",
+          status: "Generated",
+          print_credit_note: true,
+          collected_person_name: deliveryChallan.delivery_person_name,
+          collected_person_no:
+            deliveryChallan.delivery_person_phone_number,
+          vehicle_no: deliveryChallan.vehicle_number,
+        },
+        { transaction }
+      );
+
+      // ✅ Always create a new CreditNoteItem
+      await CreditNoteItem.create(
+        {
+          credit_note_id: creditNote.id,
+          product_id: deliveryChallanItem.product_id,
+          product_name: deliveryChallanItem.product_name,
+          quantity: 1,
+          unit_price: price,
+          total_price: price,
+          device_ids: [asset_id],
+          reason: "Asset was removed again",
+        },
+        { transaction }
+      );
+
+      // ✅ Link this new credit note to this specific asset transaction
+      await targetTransaction.update(
+        { credit_note_id: creditNote.id },
+        { transaction }
+      );
     }
 
     await transaction.commit();
     res.status(201).json({
-      message: existingTransaction
-        ? "Asset transaction updated successfully"
-        : "Asset transaction created successfully",
+      message: "Asset transaction created successfully",
       transaction: targetTransaction,
-      creditNote: creditNote || null
+      creditNote: creditNote || null,
     });
   } catch (error) {
     await transaction.rollback();
-    console.error("Error creating/updating asset transaction:", error);
+    console.error("Error creating asset transaction:", error);
     res.status(500).json({
-      message: "Error creating/updating asset transaction",
-      error
+      message: "Error creating asset transaction",
+      error,
     });
   }
 };
+
 
 
 

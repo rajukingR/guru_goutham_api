@@ -46,6 +46,10 @@ export default (sequelize, DataTypes) => {
             type: DataTypes.ENUM('Added', 'Removed'),
             allowNull: false
         },
+        is_default: {
+            type: DataTypes.ENUM('Default', 'Upgraded'),
+            allowNull: false
+        },
         credit_note_id: {
             type: DataTypes.INTEGER,
             allowNull: true, // ✅ allow null

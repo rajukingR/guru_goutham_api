@@ -12,6 +12,7 @@ import {
 } from '../controllers/deliveryChallansController.js';
 
 import authMiddleware from "../middlewares/authMiddleware.js";
+import upload from "../middlewares/multer.js";
 
 const router = express.Router();
 
@@ -23,7 +24,7 @@ router.get('/customer-details/:customer_code', authMiddleware, getDeliveryChalla
 router.get('/peripheral-assets/:customer_code', getDeliveryChallansByCustomerCodePeripheralAssets);
 
 router.get('/:id', authMiddleware, getDeliveryChallanById);
-router.put('/:id', authMiddleware, updateDeliveryChallan);
+router.put('/:id', authMiddleware, upload.single("file"), updateDeliveryChallan);
 router.delete('/:id', authMiddleware, deleteDeliveryChallan);
 
 export default router;

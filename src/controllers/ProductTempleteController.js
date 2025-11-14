@@ -302,7 +302,7 @@ export const getProductById = async (req, res) => {
 export const getProductByIdWithTransactions = async (req, res) => {
   try {
     const productId = req.params.id;
-    const parentAssetId = req.query.asset_id; // <-- get from query
+    const parentAssetId = req.query.asset_id;
 
     if (!parentAssetId) {
       return res.status(400).json({ message: "asset_id query parameter is required" });
@@ -311,39 +311,36 @@ export const getProductByIdWithTransactions = async (req, res) => {
     // Fetch product template
     const product = await ProductTemplete.findByPk(productId);
     if (!product) {
-      return res.status(404).json({
-        message: "Product not found"
-      });
+      return res.status(404).json({ message: "Product not found" });
     }
 
-    // Fetch all AssetTransactions for this product and parent_asset_id
+    // Fetch asset transactions
     const assetTransactions = await AssetTransaction.findAll({
       where: {
         product_id: productId,
-        parent_asset_id: parentAssetId
+        parent_asset_id: parentAssetId,
       },
       order: [["created_at", "DESC"]],
     });
 
-    // Compute itemsInfo based on transactions with size AND status "Removed"
+    // ✅ itemsInfo: true only when status = "Removed" and is_default = "Default"
     const itemsInfo = {
       ram: assetTransactions.some(
-        t => t.item_type === "ram" && t.status === "Removed"
-      ) || false,
+        (t) => t.item_type === "ram" && t.status === "Removed" && t.is_default === "Default"
+      ),
       processor_model: assetTransactions.some(
-        t => t.item_type === "processor" && t.status === "Removed"
-      ) || false,
+        (t) => t.item_type === "processor" && t.status === "Removed" && t.is_default === "Default"
+      ),
       storage: assetTransactions.some(
-        t => t.item_type === "storage" && t.status === "Removed"
-      ) || false,
+        (t) => t.item_type === "storage" && t.status === "Removed" && t.is_default === "Default"
+      ),
     };
 
     res.status(200).json({
       ...product.toJSON(),
       itemsInfo,
-      assetTransactions, // all related transactions
+      assetTransactions,
     });
-
   } catch (error) {
     console.error("Sequelize error:", error);
     res.status(500).json({

@@ -63,7 +63,10 @@ export const createDeliveryChallan = async (req, res) => {
       other_accessory,
       defualt_dc,
       is_direct_invoice,
-
+      mouse_qty,
+      cable_qty,
+      bag_qty,
+      others_qty,
       items
     } = req.body;
 
@@ -133,6 +136,10 @@ export const createDeliveryChallan = async (req, res) => {
       other_accessory: parsedAccessories, // ✅ save as JSON
       defualt_dc,
       is_direct_invoice,
+      mouse_qty: mouse_qty || 0,
+      cable_qty: cable_qty || 0,
+      bag_qty: bag_qty || 0,
+      others_qty: others_qty || 0,
     });
 
     // 🔎 Step 3: Save items if present
@@ -306,7 +313,9 @@ export const getAllDeliveryChallanDelivered = async (req, res) => {
 // Get Delivery Challans by Customer Code
 // Get Delivery Challans by Customer Code
 export const getDeliveryChallansByCustomerCode = async (req, res) => {
-  const { customer_code } = req.params;
+  const {
+    customer_code
+  } = req.params;
 
   // Helper: safely parse device_ids
   function parseDeviceIds(deviceIdsRaw) {
@@ -323,9 +332,16 @@ export const getDeliveryChallansByCustomerCode = async (req, res) => {
   try {
     // 1. Fetch Delivery Challans (with items)
     let deliveryChallans = await DeliveryChallan.findAll({
-      where: { customer_code },
-      include: [{ model: DeliveryChallanItem, as: "items" }],
-      order: [["created_at", "DESC"]],
+      where: {
+        customer_code
+      },
+      include: [{
+        model: DeliveryChallanItem,
+        as: "items"
+      }],
+      order: [
+        ["created_at", "DESC"]
+      ],
     });
 
     // 2. Filter out challans where peripheral_update = true
@@ -336,8 +352,13 @@ export const getDeliveryChallansByCustomerCode = async (req, res) => {
 
     // 4. Fetch Credit Notes (returns)
     const creditNotes = await CreditNote.findAll({
-      where: { dispatch_order_id: dispatchOrderIds },
-      include: [{ model: CreditNoteItem, as: "items" }],
+      where: {
+        dispatch_order_id: dispatchOrderIds
+      },
+      include: [{
+        model: CreditNoteItem,
+        as: "items"
+      }],
     });
 
     const creditNoteMap = {};
@@ -350,7 +371,11 @@ export const getDeliveryChallansByCustomerCode = async (req, res) => {
 
     // 5. Fetch Asset Swaps (swapped-out devices)
     const assetSwaps = await AssetSwap.findAll({
-      where: { swapped_on: { [Op.ne]: null } }, // only valid swaps
+      where: {
+        swapped_on: {
+          [Op.ne]: null
+        }
+      }, // only valid swaps
       raw: true,
     });
 
@@ -401,7 +426,9 @@ export const getDeliveryChallansByCustomerCode = async (req, res) => {
 
 
 export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
-  const { customer_code } = req.params;
+  const {
+    customer_code
+  } = req.params;
 
   function parseDeviceIds(deviceIdsRaw) {
     if (!deviceIdsRaw) return [];
@@ -471,7 +498,7 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
     // 4. Fetch asset swaps for all product IDs and device IDs
     const allDeviceIds = [];
     const allProductIds = new Set();
-    
+
     // Collect all device IDs and product IDs from challan items
     deliveryChallans.forEach(dc => {
       dc.items.forEach(item => {
@@ -484,9 +511,16 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
     // Fetch asset swaps for these product IDs and device IDs
     const assetSwaps = await AssetSwap.findAll({
       where: {
-        [Op.or]: [
-          { asset_id: { [Op.in]: allDeviceIds } },
-          { product_id: { [Op.in]: Array.from(allProductIds) } }
+        [Op.or]: [{
+            asset_id: {
+              [Op.in]: allDeviceIds
+            }
+          },
+          {
+            product_id: {
+              [Op.in]: Array.from(allProductIds)
+            }
+          }
         ]
       }
     });
@@ -524,7 +558,9 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
     }
 
     const challans = deliveryChallans.map(dc => {
-      const plain = dc.get({ plain: true });
+      const plain = dc.get({
+        plain: true
+      });
       delete plain.customer;
       return plain;
     });
@@ -636,7 +672,9 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
 
 
 export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res) => {
-  const { customer_code } = req.params;
+  const {
+    customer_code
+  } = req.params;
 
   function parseDeviceIds(deviceIdsRaw) {
     if (!deviceIdsRaw) return [];
@@ -649,15 +687,18 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
   }
 
   try {
-    // ✅ Step 1: Find challans with peripheral_update = true AND defualt_dc = true
+    // ✅ Step 1: Get peripheral challans (non-default)
     const challans = await DeliveryChallan.findAll({
       where: {
         customer_code,
         peripheral_update: true,
-        [Op.or]: [
-          { defualt_dc: false }, // keep false
-          { defualt_dc: null } // keep null if column is nullable
-        ]
+        [Op.or]: [{
+            defualt_dc: false
+          },
+          {
+            defualt_dc: null
+          },
+        ],
       },
       attributes: ["id", "dc_id", "customer_code", "peripheral_update", "defualt_dc"],
     });
@@ -668,6 +709,7 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
 
     const challanIds = challans.map((c) => c.id);
 
+    // ✅ Step 2: Fetch challan items with product details
     const challanItems = await DeliveryChallanItem.findAll({
       where: {
         challan_id: challanIds
@@ -686,61 +728,72 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
           "model",
           "purchase_price",
           "rent_price_per_month",
-          "capacity"
+          "capacity",
         ],
-      }],
+      }, ],
     });
 
-    // ✅ Step 2: Get all asset_ids that already exist in asset_transactions for this customer
-    const existingAssetTransactions = await AssetTransaction.findAll({
-      where: {
-        status: 'Added' // Only consider active assets
-      },
-      attributes: ['asset_id'],
-      raw: true
+    // ✅ Step 3: Get ALL asset transactions (added + removed)
+    const allAssetTransactions = await AssetTransaction.findAll({
+      attributes: ["asset_id", "status", "created_at"],
+      order: [
+        ["created_at", "DESC"]
+      ], // latest first
+      raw: true,
     });
 
-    const existingAssetIds = existingAssetTransactions.map(transaction => transaction.asset_id);
+    // ✅ Step 4: Track latest status of each asset
+    const latestStatus = {};
+    for (const tx of allAssetTransactions) {
+      if (!latestStatus[tx.asset_id]) {
+        latestStatus[tx.asset_id] = tx.status; // take first (latest) entry
+      }
+    }
 
-    // ✅ Step 3: Filter device_ids by removing those that exist in asset_transactions
-    // ✅ Step 4: Also filter out items that end up with empty device_ids array
-    const response = challanItems.map((item) => {
-      const deviceIds = parseDeviceIds(item.device_ids);
-      const availableDeviceIds = deviceIds.filter(deviceId => 
-        !existingAssetIds.includes(deviceId)
-      );
+    // ✅ Step 5: Only those whose latest status = 'Added' are active
+    const activeAssetIds = Object.keys(latestStatus).filter(
+      (id) => latestStatus[id] === "Added"
+    );
 
-      return {
-        id: item.id,
-        challan_id: item.challan_id,
-        product_id: item.product_id,
-        product_name: item.product_name,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_price: item.total_price,
-        device_ids: availableDeviceIds, // Only unavailable device IDs
-        available_quantity: availableDeviceIds.length, // New field showing available count
-        total_quantity: deviceIds.length, // Original quantity for reference
-        created_at: item.created_at,
-        updated_at: item.updated_at,
+    // ✅ Step 6: Filter out active assets from challan items
+    const response = challanItems
+      .map((item) => {
+        const deviceIds = parseDeviceIds(item.device_ids);
+        const availableDeviceIds = deviceIds.filter(
+          (deviceId) => !activeAssetIds.includes(deviceId)
+        );
 
-        product: item.product ?
-          {
-            id: item.product.id,
-            product_name: item.product.product_name,
-            product_category: item.product.product_category,
-            ram: item.product.ram,
-            storage: item.product.storage,
-            disk_type: item.product.disk_type,
-            brand: item.product.brand,
-            model: item.product.model,
-            purchase_price: item.product.purchase_price,
-            rent_price_per_month: item.product.rent_price_per_month,
-            capacity: item.product.capacity,
-          } :
-          null,
-      };
-    }).filter(item => item.device_ids.length > 0); // ✅ Only include items with non-empty device_ids
+        return {
+          id: item.id,
+          challan_id: item.challan_id,
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total_price: item.total_price,
+          device_ids: availableDeviceIds,
+          available_quantity: availableDeviceIds.length,
+          total_quantity: deviceIds.length,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          product: item.product ?
+            {
+              id: item.product.id,
+              product_name: item.product.product_name,
+              product_category: item.product.product_category,
+              ram: item.product.ram,
+              storage: item.product.storage,
+              disk_type: item.product.disk_type,
+              brand: item.product.brand,
+              model: item.product.model,
+              purchase_price: item.product.purchase_price,
+              rent_price_per_month: item.product.rent_price_per_month,
+              capacity: item.product.capacity,
+            } :
+            null,
+        };
+      })
+      .filter((item) => item.device_ids.length > 0);
 
     return res.status(200).json(response);
   } catch (error) {
@@ -819,6 +872,8 @@ export const updateDeliveryChallan = async (req, res) => {
     const {
       id
     } = req.params;
+    const file = req.file; // ✅ assuming you're using multer for uploads
+
     const {
       dc_title,
       is_dc,
@@ -835,6 +890,7 @@ export const updateDeliveryChallan = async (req, res) => {
       pan_number,
       remarks,
       dc_file,
+      uploaded_dc, // still included to allow manual updates too
       type,
       payment_type,
       regular_dc,
@@ -860,14 +916,24 @@ export const updateDeliveryChallan = async (req, res) => {
       others,
       other_accessory,
       defualt_dc,
+      mouse_qty,
+      cable_qty,
+      bag_qty,
+      others_qty,
       items
     } = req.body;
 
     const deliveryChallan = await DeliveryChallan.findByPk(id);
     if (!deliveryChallan) {
       return res.status(404).json({
-        message: 'Delivery Challan not found'
+        message: "Delivery Challan not found"
       });
+    }
+
+    // ✅ Handle uploaded file
+    let uploadedFile = uploaded_dc;
+    if (file) {
+      uploadedFile = file.filename; // save uploaded filename
     }
 
     // ✅ Convert comma-separated string → JSON array
@@ -875,8 +941,8 @@ export const updateDeliveryChallan = async (req, res) => {
     if (typeof other_accessory === "string") {
       parsedAccessories = other_accessory
         .split(",")
-        .map(acc => acc.trim())
-        .filter(acc => acc.length > 0);
+        .map((acc) => acc.trim())
+        .filter((acc) => acc.length > 0);
     }
 
     await deliveryChallan.update({
@@ -886,7 +952,7 @@ export const updateDeliveryChallan = async (req, res) => {
       customer_code,
       order_number,
       dispatch_order_number,
-      dispatch_order_id: order_id, // 🔎 check: do you want req.body.dispatch_order_id instead?
+      dispatch_order_id,
       dc_date,
       dc_status,
       dealer_reference,
@@ -895,6 +961,7 @@ export const updateDeliveryChallan = async (req, res) => {
       pan_number,
       remarks,
       dc_file,
+      uploaded_dc: uploadedFile, // ✅ store uploaded file name or existing value
       type,
       payment_type,
       regular_dc,
@@ -918,9 +985,13 @@ export const updateDeliveryChallan = async (req, res) => {
       cable,
       bag,
       others,
-      other_accessory: parsedAccessories, // ✅ Save as JSON
+      other_accessory: parsedAccessories,
       defualt_dc,
-      updated_at: new Date()
+      mouse_qty: mouse_qty || 0,
+      cable_qty: cable_qty || 0,
+      bag_qty: bag_qty || 0,
+      others_qty: others_qty || 0,
+      updated_at: new Date(),
     });
 
     // ✅ Replace items if present
@@ -931,24 +1002,24 @@ export const updateDeliveryChallan = async (req, res) => {
         }
       });
 
-      const formattedItems = items.map(item => ({
+      const formattedItems = items.map((item) => ({
         ...item,
         challan_id: id,
-        device_ids: JSON.stringify(item.device_ids || [])
+        device_ids: JSON.stringify(item.device_ids || []),
       }));
 
       await DeliveryChallanItem.bulkCreate(formattedItems);
     }
 
     res.status(200).json({
-      message: 'Delivery Challan updated successfully',
-      deliveryChallan
+      message: "Delivery Challan updated successfully",
+      deliveryChallan,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
-      message: 'Error updating delivery challan',
-      error
+      message: "Error updating delivery challan",
+      error,
     });
   }
 };

@@ -13,7 +13,7 @@ export default (sequelize, DataTypes) => {
     vendor_invoice_number: DataTypes.STRING,
     purchase_order_id: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: true
     },
     supplier_id: {
       type: DataTypes.INTEGER,

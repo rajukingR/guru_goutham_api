@@ -8,6 +8,12 @@ const GoodsReceiptItem = db.GoodsReceiptItem;
 const AssembledComponent = db.AssembledComponent;
 const AssetIdComponent = db.AssetIdComponent;
 const AssetTransaction = db.AssetTransaction;
+const CreditNote = db.CreditNote;
+const CreditNoteItem = db.CreditNoteItem;
+const DispatchOrder = db.DispatchOrder;
+const DispatchOrderItem = db.DispatchOrderItem;
+const DeliveryChallan = db.DeliveryChallan;
+
 
 // Create a new product
 export const createProduct = async (req, res) => {
@@ -54,6 +60,30 @@ export const getAllProducts = async (req, res) => {
   }
 };
 
+
+
+
+export const getAllProductsWithoutActive = async (req, res) => {
+  try {
+    const products = await ProductTemplete.findAll({
+  where: {
+    [Op.or]: [
+      { is_deleted: false },
+      { is_active: true }
+    ]
+  },
+  order: [['id', 'DESC']],
+});
+
+    res.status(200).json(products);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: 'Error fetching products',
+      error
+    });
+  }
+};
 
 const parseJSONSafe = (input) => {
   try {
@@ -356,55 +386,208 @@ export const getProductByIdWithTransactions = async (req, res) => {
 // Update product
 export const updateProduct = async (req, res) => {
   try {
-    const {
-      body,
-      file
-    } = req;
+    const { body, file } = req;
+
     if (file) {
       body.product_image = file.filename;
     }
 
     const product = await ProductTemplete.findByPk(req.params.id);
     if (!product) {
-      return res.status(404).json({
-        message: 'Product not found'
-      });
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // ⭐ PREVENT CONFLICT: Active product cannot be deleted
+    if (body.is_active === true) {
+      body.is_deleted = false;    
+    }
+
+    // ⭐ If soft delete = true → make is_active = false
+    if (body.is_deleted === true) {
+      body.is_active = false; 
     }
 
     await product.update(body);
+
     res.status(200).json({
-      message: 'Product updated successfully',
-      product
+      message: "Product updated successfully",
+      product,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
-      message: 'Error updating product',
-      error
+      message: "Error updating product",
+      error,
     });
   }
 };
 
 
-// Delete product
+
+
+
+
+// export const updateProduct = async (req, res) => {
+//   try {
+//     const {
+//       body,
+//       file
+//     } = req;
+//     if (file) {
+//       body.product_image = file.filename;
+//     }
+
+//     const product = await ProductTemplete.findByPk(req.params.id);
+//     if (!product) {
+//       return res.status(404).json({
+//         message: 'Product not found'
+//       });
+//     }
+
+//     await product.update(body);
+//     res.status(200).json({
+//       message: 'Product updated successfully',
+//       product
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({
+//       message: 'Error updating product',
+//       error
+//     });
+//   }
+// };
+
+
+
+
+const checkIfProductInUse = async (productId) => {
+  // Fetch all dispatch orders containing this product
+  const orders = await DispatchOrder.findAll({
+    include: [
+      {
+        model: DispatchOrderItem,
+        as: "items",
+        where: { product_id: productId },
+        required: true
+      },
+      { model: DeliveryChallan, as: "delivery_challans", required: false }
+    ]
+  });
+
+  // Apply your EXACT SAME logic for qty updates based on returns & swaps
+  for (const order of orders) {
+    const creditNotes = await CreditNote.findAll({
+      where: { dispatch_order_id: order.id },
+      include: [{ model: CreditNoteItem, as: "items" }]
+    });
+
+    const allReturnedItems = [];
+    for (const cn of creditNotes) {
+      for (const item of cn.items) {
+        allReturnedItems.push({
+          product_id: item.product_id,
+          returned_quantity: item.quantity,
+          returned_device_ids: item.device_ids || []
+        });
+      }
+    }
+
+    // Apply same item calculation as your main function
+    for (const item of order.items) {
+      if (item.product_id !== productId) continue;
+
+      const matchedReturns = allReturnedItems.filter(
+        (ret) => ret.product_id === productId
+      );
+
+      let returnedDeviceIds = [];
+      for (const ret of matchedReturns) {
+        returnedDeviceIds.push(...ret.returned_device_ids);
+      }
+
+      item.dataValues.device_ids = item.device_ids?.filter(
+        (id) => !returnedDeviceIds.includes(id)
+      );
+
+      if (!item.dataValues.device_ids || item.dataValues.device_ids.length === 0) {
+        item.dataValues.quantity = 0;
+      } else {
+        item.dataValues.quantity = item.dataValues.device_ids.length;
+      }
+
+      if (item.dataValues.quantity > 0) {
+        return true; // product STILL IN USE → delete not allowed
+      }
+    }
+  }
+
+  return false; // no active qty → safe to delete
+};
+
+
+
+// SOFT DELETE PRODUCT
 export const deleteProduct = async (req, res) => {
   try {
-    const product = await ProductTemplete.findByPk(req.params.id);
+    const productId = req.params.id;
+
+    const product = await ProductTemplete.findByPk(productId);
     if (!product) {
-      return res.status(404).json({
-        message: 'Product not found'
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // Check if product still in rental use after full adjustments
+    const isInUse = await checkIfProductInUse(productId);
+
+    if (isInUse) {
+      return res.status(400).json({
+        message: "Cannot delete. Product is still in rental use"
       });
     }
 
-    await product.destroy();
-    res.status(200).json({
-      message: 'Product deleted successfully'
+    // Safe to Soft Delete
+    await ProductTemplete.update(
+      { is_deleted: 1, is_active: 0 },
+      { where: { id: productId } }
+    );
+
+    return res.status(200).json({
+      message: "Product soft-deleted successfully"
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({
-      message: 'Error deleting product',
+      message: "Error deleting product",
       error
     });
   }
 };
+
+
+
+
+
+
+// export const deleteProduct = async (req, res) => {
+//   try {
+//     const product = await ProductTemplete.findByPk(req.params.id);
+//     if (!product) {
+//       return res.status(404).json({
+//         message: 'Product not found'
+//       });
+//     }
+
+//     await product.destroy();
+//     res.status(200).json({
+//       message: 'Product deleted successfully'
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({
+//       message: 'Error deleting product',
+//       error
+//     });
+//   }
+// };

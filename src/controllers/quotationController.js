@@ -170,6 +170,73 @@ export const getAllQuotations = async (req, res) => {
 
 
 
+
+// Get all quotations
+// export const getAllQuotations = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     let quotations;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin gets all quotations
+//       quotations = await Quotation.findAll({
+//         include: [
+//           {
+//             model: QuotationItem,
+//             as: "items",
+//           },
+//           {
+//             model: Lead,
+//             as: "lead",
+//             include: [
+//               {
+//                 model: Contact,
+//                 as: "contact",
+//               },
+//             ],
+//           },
+//         ],
+//         order: [["created_at", "DESC"]],
+//       });
+//     } else {
+//       // ⭐ Non-admin filtered by Contact.superior_id = loggedInUser.id
+//       quotations = await Quotation.findAll({
+//         include: [
+//           {
+//             model: QuotationItem,
+//             as: "items",
+//           },
+//           {
+//             model: Lead,
+//             as: "lead",
+//             required: true,
+//             include: [
+//               {
+//                 model: Contact,
+//                 as: "contact",
+//                 required: true,
+//                 where: { superior_id: id }, // ⭐ FILTER HERE
+//               },
+//             ],
+//           },
+//         ],
+//         order: [["created_at", "DESC"]],
+//       });
+//     }
+
+//     res.status(200).json(quotations);
+
+//   } catch (error) {
+//     console.error("Error fetching quotations:", error);
+//     res.status(500).json({
+//       message: "Error fetching quotations",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
 export const getAllQuotationsApproved = async (req, res) => {
   try {
     const quotations = await Quotation.findAll({
@@ -276,6 +343,169 @@ export const getAllQuotationsApproved = async (req, res) => {
   }
 };
 
+
+
+
+
+
+// export const getAllQuotationsApproved = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     let quotations;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin → get all
+//       quotations = await Quotation.findAll({
+//         where: {
+//           status: 'Approved',
+//           is_direct_invoice: false
+//         },
+//         include: [
+//           {
+//             model: QuotationItem,
+//             as: 'items',
+//             include: [{
+//               model: db.GoodsReceiptItem,
+//               as: 'goodsReceiptItems',
+//               attributes: ['id', 'goods_receipt_id', 'product_id', 'asset_ids'],
+//             }],
+//           },
+//           {
+//             model: Contact,
+//             as: 'customer',
+//             attributes: [
+//               'id',
+//               'first_name',
+//               'last_name',
+//               'email',
+//               'phone_number',
+//               'company_name',
+//               'customer_id',
+//               'industry',
+//               'payment_type',
+//               'gst',
+//               'pan_no',
+//               'owner',
+//               'remarks',
+//               'status',
+//               'created_at',
+//               'updated_at',
+//               'address'
+//             ],
+//           },
+//         ],
+//         order: [['id', 'DESC']]
+//       });
+
+//     } else {
+//       // ⭐ Non-admin → filter by superior_id
+//       quotations = await Quotation.findAll({
+//         where: {
+//           status: 'Approved',
+//           is_direct_invoice: false
+//         },
+//         include: [
+//           {
+//             model: QuotationItem,
+//             as: 'items',
+//             include: [{
+//               model: db.GoodsReceiptItem,
+//               as: 'goodsReceiptItems',
+//               attributes: ['id', 'goods_receipt_id', 'product_id', 'asset_ids'],
+//             }],
+//           },
+//           {
+//             model: Contact,
+//             as: 'customer',
+//             required: true,
+//             where: { superior_id: id },   // ⭐ IMPORTANT FILTER
+//             attributes: [
+//               'id',
+//               'first_name',
+//               'last_name',
+//               'email',
+//               'phone_number',
+//               'company_name',
+//               'customer_id',
+//               'industry',
+//               'payment_type',
+//               'gst',
+//               'pan_no',
+//               'owner',
+//               'remarks',
+//               'status',
+//               'created_at',
+//               'updated_at',
+//               'address'
+//             ],
+//           },
+//         ],
+//         order: [['id', 'DESC']]
+//       });
+//     }
+
+//     // ⭐ KEEP ALL EXISTING REMAINING LOGIC EXACTLY SAME
+//     const approvedOrders = await Order.findAll({
+//       where: {
+//         order_status: 'Approved'
+//       },
+//       include: [{
+//         model: OrderItem,
+//         as: 'items',
+//         attributes: ['product_id', 'device_ids'],
+//       }],
+//     });
+
+//     const usedDeviceMap = {};
+
+//     approvedOrders.forEach(order => {
+//       order.items.forEach(item => {
+//         const productId = item.product_id;
+//         let deviceIds = [];
+
+//         try {
+//           deviceIds = Array.isArray(item.device_ids) ?
+//             item.device_ids :
+//             JSON.parse(item.device_ids || '[]');
+//         } catch (err) {
+//           console.warn('Invalid device_ids JSON:', item.device_ids);
+//         }
+
+//         if (!usedDeviceMap[productId]) {
+//           usedDeviceMap[productId] = new Set();
+//         }
+
+//         deviceIds.forEach(id => usedDeviceMap[productId].add(id));
+//       });
+//     });
+
+//     quotations.forEach(q => {
+//       q.items.forEach(item => {
+//         const allAssets = [];
+
+//         item.goodsReceiptItems?.forEach(grn => {
+//           if (Array.isArray(grn.asset_ids)) {
+//             allAssets.push(...grn.asset_ids);
+//           }
+//         });
+
+//         const usedSet = usedDeviceMap[item.product_id] || new Set();
+//         const remainingAssets = allAssets.filter(asset => !usedSet.has(asset));
+//         item.setDataValue('available_asset_ids', remainingAssets);
+//       });
+//     });
+
+//     res.status(200).json(quotations);
+
+//   } catch (error) {
+//     console.error('Error fetching approved quotations with remaining assets:', error);
+//     res.status(500).json({
+//       message: 'Error fetching approved quotations with remaining assets',
+//       error,
+//     });
+//   }
+// };
 
 
 

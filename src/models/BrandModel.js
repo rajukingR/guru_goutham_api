@@ -17,7 +17,7 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: false
     },
-    active_status: {
+    is_active: {
       type: DataTypes.BOOLEAN,
       defaultValue: true
     },

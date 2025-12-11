@@ -10,12 +10,12 @@ const User = db.User;
 export const createUser = async (req, res) => {
   try {
     const {
+      superior_id,
       email,
       password,
       role_id,
       role_name,
-      first_name,
-      last_name,
+      full_name,
       login_id,
       branch,
       phone_number,
@@ -43,13 +43,12 @@ export const createUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
-      full_name: `${first_name} ${last_name}`,
+      superior_id,
+      full_name,
       email,
       password_hash: hashedPassword,
       role_id,
       role_name,
-      first_name,
-      last_name,
       login_id,
       branch,
       phone_number,
@@ -80,16 +79,38 @@ export const createUser = async (req, res) => {
 // Get all users
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.findAll();
+    const { role_name, id } = req.user;
+    
+    let users;
+
+    if (role_name === "Admin") {
+      users = await User.findAll({
+        where: {
+          id: { [Op.ne]: id } // ⭐ exclude logged-in admin
+        },
+        order: [["id", "DESC"]],
+      });
+
+    } else {
+      users = await User.findAll({
+        where: { superior_id: id },
+        
+        order: [["id", "DESC"]],
+      });
+    }
+
     res.status(200).json(users);
+
   } catch (error) {
     console.error(error);
     res.status(500).json({
       message: "Error fetching users",
-      error
+      error: error.message,
     });
   }
 };
+
+
 
 // Get user by ID
 export const getUserById = async (req, res) => {
@@ -123,6 +144,7 @@ export const updateUser = async (req, res) => {
       role_id,
       role_name,
       first_name,
+      full_name,
       last_name,
       login_id,
       branch,
@@ -165,7 +187,7 @@ export const updateUser = async (req, res) => {
       : user.password_hash;
 
     await user.update({
-      full_name: `${first_name} ${last_name}`,
+      full_name,
       email,
       password_hash: updatedPassword,
       role_id,

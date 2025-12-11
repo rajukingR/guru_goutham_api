@@ -8,6 +8,11 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    peripheral_asset_id_product_id: {
+            type: DataTypes.INTEGER,
+            allowNull: true, // MUST be true
+            defaultValue: null
+        },
     product_name: {
       type: DataTypes.STRING,
       allowNull: false,

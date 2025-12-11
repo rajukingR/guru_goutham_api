@@ -8,14 +8,14 @@ export const createBrand = async (req, res) => {
       brand_number,
       brand_name,
       brand_description,
-      active_status = true
+      is_active = true
     } = req.body;
 
     const newBrand = await Brand.create({
       brand_number,
       brand_name,
       brand_description,
-      active_status
+      is_active
     });
 
     res.status(201).json({
@@ -55,7 +55,7 @@ export const getActiveBrands = async (req, res) => {
   try {
     const brands = await Brand.findAll({
       where: {
-        active_status: true
+        is_active: true
       }
     });
     res.status(200).json(brands);
@@ -99,14 +99,14 @@ export const updateBrand = async (req, res) => {
       brand_number,
       brand_name,
       brand_description,
-      active_status
+      is_active
     } = req.body;
 
     await brand.update({
       brand_number,
       brand_name,
       brand_description,
-      active_status
+      is_active
     });
 
     res.status(200).json({

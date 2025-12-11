@@ -196,6 +196,57 @@ export const getAllDeliveryChallans = async (req, res) => {
 
 
 
+// export const getAllDeliveryChallans = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     let deliveryChallans;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin: Fetch ALL Delivery Challans
+//       deliveryChallans = await DeliveryChallan.findAll({
+//         where: {
+//           is_direct_invoice: false,
+//         },
+//         include: [
+//           { model: DeliveryChallanItem, as: "items" },
+//           { model: Contact, as: "customer" } // ⭐ Correct alias
+//         ],
+//         order: [["created_at", "DESC"]],
+//       });
+
+//     } else {
+//       // ⭐ Non-Admin: Fetch ONLY delivery challans created by this user
+//       deliveryChallans = await DeliveryChallan.findAll({
+//         where: {
+//           is_direct_invoice: false,
+//         },
+//         include: [
+//           { model: DeliveryChallanItem, as: "items" },
+//           {
+//             model: Contact,
+//             as: "customer",    // ⭐ Must match model alias
+//             required: true,
+//             where: { superior_id: id },  // ⭐ Main filter
+//           },
+//         ],
+//         order: [["created_at", "DESC"]],
+//       });
+//     }
+
+//     res.status(200).json(deliveryChallans);
+
+//   } catch (error) {
+//     console.error("Error fetching delivery challans:", error);
+//     res.status(500).json({
+//       message: "Error fetching delivery challans",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
 export const getAllDeliveryChallanDelivered = async (req, res) => {
   try {
     // Step 1: Fetch all CreditNotes with their items

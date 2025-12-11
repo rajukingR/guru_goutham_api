@@ -13,6 +13,11 @@ export default (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             allowNull: false
         },
+        peripheral_asset_id_product_id: {
+            type: DataTypes.INTEGER,
+            allowNull: true, // MUST be true
+            defaultValue: null
+        },
         parent_asset_id: {
             type: DataTypes.STRING,
             allowNull: false

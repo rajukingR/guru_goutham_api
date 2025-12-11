@@ -1,4 +1,5 @@
 import db from '../models/index.js';
+import { Op } from "sequelize";
 
 const Role = db.Role;
 
@@ -44,16 +45,32 @@ export const createRole = async (req, res) => {
 
 // Get all roles
 export const getAllRoles = async (req, res) => {
-    try {
-        const roles = await Role.findAll();
-        res.status(200).json(roles);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            message: 'Error fetching roles',
-            error
-        });
+  const { role_name } = req.user;
+
+  try {
+    let roles;
+
+    if (role_name === "Admin") {
+      // ⭐ Admin gets all roles
+      roles = await Role.findAll();
+    } else {
+      // ⭐ Non-admin users → Exclude Admin role
+      roles = await Role.findAll({
+        where: {
+          role_name: { [Op.ne]: "Admin" }   // NOT EQUAL TO ADMIN
+        }
+      });
     }
+
+    res.status(200).json(roles);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Error fetching roles",
+      error: error.message,
+    });
+  }
 };
 
 // Get role by ID

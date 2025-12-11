@@ -104,6 +104,12 @@ export default (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: false,
     },
+    is_active: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
+
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW

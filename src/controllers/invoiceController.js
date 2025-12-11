@@ -9,7 +9,7 @@ const InvoiceItem = db.InvoiceItem;
 const InvoiceShippingDetail = db.InvoiceShippingDetail;
 const ProductTemplete = db.ProductTemplete;
 const TaxType = db.TaxType;
-
+const Contact = db.Contact;
 const Order = db.Order;
 const OrderItem = db.OrderItem;
 const AssetId = db.AssetId;
@@ -400,6 +400,96 @@ export const getAllInvoices = async (req, res) => {
 };
 
 
+
+
+
+// export const getAllInvoices = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     let invoices;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin → Fetch ALL invoices
+//       invoices = await Invoice.findAll({
+//         include: [
+//           {
+//             model: InvoiceItem,
+//             as: "items",
+//             attributes: ["id", "product_id", "returned_date"],
+//           },
+//           { 
+//             model: Contact,
+//             as: "customer" // ⚠️ Make sure alias matches your model
+//           }
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+
+//     } else {
+//       // ⭐ Non-admin → Only invoices where the Contact.superior_id matches user
+//       invoices = await Invoice.findAll({
+//         include: [
+//           {
+//             model: InvoiceItem,
+//             as: "items",
+//             attributes: ["id", "product_id", "returned_date"],
+//           },
+//           {
+//             model: Contact,
+//             as: "customer",        // ⚠️ must match association
+//             required: true,
+//             where: { superior_id: id },  // ⭐ MAIN FILTER
+//           }
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+//     }
+
+//     // ⭐⭐⭐ NOTHING BELOW THIS WAS CHANGED ⭐⭐⭐
+
+//     const dispatchOrderIds = invoices
+//       .map(inv => inv.dispatch_order_id)
+//       .filter(Boolean);
+
+//     const creditNotes = await db.CreditNote.findAll({
+//       where: {
+//         dispatch_order_id: {
+//           [Op.in]: dispatchOrderIds,
+//         },
+//         returned_date: {
+//           [Op.not]: null,
+//         },
+//       },
+//       attributes: ["dispatch_order_id", "returned_date"],
+//     });
+
+//     const groupedReturns = {};
+//     creditNotes.forEach(note => {
+//       const id = note.dispatch_order_id;
+//       if (!groupedReturns[id]) groupedReturns[id] = [];
+//       groupedReturns[id].push(note.returned_date);
+//     });
+
+//     const finalResult = invoices.map(inv => {
+//       const returnedDates = groupedReturns[inv.dispatch_order_id] || [];
+//       return {
+//         ...inv.toJSON(),
+//         credit_note_returned_dates:
+//           returnedDates.length > 0 ? returnedDates[0] : null,
+//       };
+//     });
+
+//     res.status(200).json(finalResult);
+
+//   } catch (error) {
+//     console.error("Error fetching invoices:", error);
+//     res.status(500).json({
+//       message: "Error fetching invoices",
+//       error,
+//     });
+//   }
+// };
 
 
 

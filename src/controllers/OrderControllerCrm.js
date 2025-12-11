@@ -498,6 +498,114 @@ export const getAllOrders = async (req, res) => {
 
 
 
+
+// Get All Orders
+// export const getAllOrders = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     let orders;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin → Get ALL orders
+//       orders = await Order.findAll({
+//         include: [
+//           { model: OrderItem, as: 'items' },
+//           { model: OrderAddress, as: 'address' },
+//           { model: OrderPersonalDetail, as: 'personalDetails' },
+//           { model: Contact, as: 'customer' }
+//         ],
+//         order: [['created_at', 'DESC']]
+//       });
+
+//     } else {
+//       // ⭐ Non-admin → Get orders where Contact.superior_id = loggedInUser.id
+//       orders = await Order.findAll({
+//         include: [
+//           { model: OrderItem, as: 'items' },
+//           { model: OrderAddress, as: 'address' },
+//           { model: OrderPersonalDetail, as: 'personalDetails' },
+//           {
+//             model: Contact,
+//             as: 'customer',
+//             required: true,
+//             where: { superior_id: id }   // ⭐ Filter here
+//           }
+//         ],
+//         order: [['created_at', 'DESC']]
+//       });
+//     }
+
+//     // ⭐ KEEP YOUR EXISTING FORMATTING LOGIC
+//     const formattedOrders = await Promise.all(
+//       orders.map(async (order) => {
+//         const orderJSON = order.toJSON();
+//         const { transaction_type, rental_duration } = orderJSON;
+
+//         let totalValue = 0;
+
+//         const itemsWithValue = await Promise.all(
+//           orderJSON.items.map(async (item) => {
+//             const product = await ProductTemplete.findOne({
+//               where: { id: item.product_id }
+//             });
+
+//             let itemTotal = 0;
+//             const qty = item.requested_quantity || 0;
+//             const duration = parseInt(rental_duration);
+
+//             if (product) {
+//               if (transaction_type === "Rent") {
+//                 if (duration >= 12 && product.rent_price_1_year) {
+//                   itemTotal = qty * product.rent_price_1_year;
+//                 } else if (duration >= 6 && product.rent_price_6_months) {
+//                   itemTotal = qty * (duration / 6) * product.rent_price_6_months;
+//                 } else if (duration >= 1 && product.rent_price_per_month) {
+//                   itemTotal = qty * duration * product.rent_price_per_month;
+//                 } else if (duration < 1 && product.rent_price_per_day) {
+//                   itemTotal = qty * (duration * 30) * product.rent_price_per_day;
+//                 }
+//               } else if (transaction_type === "Buy") {
+//                 itemTotal = qty * product.purchase_price;
+//               }
+//             }
+
+//             totalValue += itemTotal;
+
+//             return {
+//               ...item,
+//               item_total_value: itemTotal,
+//             };
+//           })
+//         );
+
+//         const totalQuantity = orderJSON.items.reduce(
+//           (sum, item) => sum + (item.requested_quantity || 0),
+//           0
+//         );
+
+//         return {
+//           ...orderJSON,
+//           total_quantity: totalQuantity,
+//           total_order_value: totalValue,
+//           personal_details: order.personalDetails,
+//           address: order.address,
+//           items: itemsWithValue,
+//         };
+//       })
+//     );
+
+//     res.status(200).json(formattedOrders);
+
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({
+//       message: "Error fetching orders",
+//       error,
+//     });
+//   }
+// };
+
 //UPDATED 05-08-25
 
 
@@ -722,6 +830,134 @@ export const getAllOrdersApproved = async (req, res) => {
 
 
 
+
+
+
+// export const getAllOrdersApproved = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     let orders;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin → all approved
+//       orders = await Order.findAll({
+//         where: { order_status: "Approved" },
+//         include: [
+//           { model: OrderItem, as: "items" },
+//           { model: OrderAddress, as: "address" },
+//           { model: OrderPersonalDetail, as: "personalDetails" },
+//           { model: Contact, as: "customer" },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+
+//     } else {
+//       // ⭐ Non-admin → approved + Contact.superior_id = login user
+//       orders = await Order.findAll({
+//         where: { order_status: "Approved" },
+//         include: [
+//           { model: OrderItem, as: "items" },
+//           { model: OrderAddress, as: "address" },
+//           { model: OrderPersonalDetail, as: "personalDetails" },
+//           {
+//             model: Contact,
+//             as: "customer",
+//             required: true,
+//             where: { superior_id: id }, // ⭐ Filter here
+//           },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+//     }
+
+//     // ⭐ Keep ALL your remaining logic exactly same
+//     const parseAssetIds = (input) => {
+//       if (Array.isArray(input)) return input;
+//       if (!input) return [];
+//       try {
+//         const parsed = typeof input === "string" ? JSON.parse(input) : input;
+//         return Array.isArray(parsed) ? parsed : [];
+//       } catch {
+//         return [];
+//       }
+//     };
+
+//     const formattedOrders = await Promise.all(
+//       orders.map(async (order) => {
+//         const orderJSON = order.toJSON();
+//         let totalValue = 0;
+
+//         const itemsWithValue = await Promise.all(
+//           orderJSON.items.map(async (item) => {
+//             const product = await ProductTemplete.findByPk(item.product_id);
+//             let itemTotal = 0;
+
+//             if (product && orderJSON.transaction_type === "Buy") {
+//               itemTotal = (item.requested_quantity || 0) * product.purchase_price;
+//             }
+
+//             totalValue += itemTotal;
+
+//             const grnItems = await GoodsReceiptItem.findAll({
+//               where: { product_id: item.product_id },
+//               attributes: ["asset_ids"],
+//               raw: true,
+//             });
+//             const allGrnAssets = grnItems.flatMap((g) => parseAssetIds(g.asset_ids));
+
+//             const allDispatchItems = await DispatchOrderItem.findAll({
+//               where: { product_id: item.product_id },
+//               attributes: ["device_ids"],
+//               raw: true,
+//             });
+//             const allDispatchedAssets = allDispatchItems.flatMap((d) =>
+//               parseAssetIds(d.device_ids)
+//             );
+//             const dispatchedSet = new Set(allDispatchedAssets);
+
+//             const creditNoteItems = await CreditNoteItem.findAll({
+//               where: { product_id: item.product_id },
+//               attributes: ["device_ids"],
+//               raw: true,
+//             });
+//             const returnedAssets = creditNoteItems.flatMap((c) =>
+//               parseAssetIds(c.device_ids)
+//             );
+//             const returnedSet = new Set(returnedAssets);
+
+//             const availableAssetIds = allGrnAssets.filter(
+//               (id) => !dispatchedSet.has(id) || returnedSet.has(id)
+//             );
+
+//             return {
+//               ...item,
+//               item_total_value: itemTotal,
+//               available_asset_ids: availableAssetIds,
+//             };
+//           })
+//         );
+
+//         return {
+//           ...orderJSON,
+//           total_order_value: totalValue,
+//           personal_details: orderJSON.personalDetails,
+//           address: order.address,
+//           items: itemsWithValue,
+//         };
+//       })
+//     );
+
+//     res.status(200).json(formattedOrders);
+
+//   } catch (error) {
+//     console.error("Error in getAllOrdersApproved:", error);
+//     res.status(500).json({
+//       message: "Error fetching approved orders",
+//       error: error.message,
+//     });
+//   }
+// };
 
 
 

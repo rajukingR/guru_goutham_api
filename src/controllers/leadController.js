@@ -3,8 +3,10 @@ const {
   Lead,
   ProductTemplete,
   Contact,
-  LeadProduct // 👈 Make sure this is imported!
+  LeadProduct
 } = db;
+import { Op } from "sequelize";
+
 
 export const createLead = async (req, res) => {
   try {
@@ -104,6 +106,73 @@ export const getAllLeads = async (req, res) => {
 };
 
 
+
+
+
+// export const getAllLeads = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     let leads;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin gets ALL leads
+//       leads = await Lead.findAll({
+//         include: [
+//           {
+//             model: Contact,
+//             as: "contact",
+//           },
+//           {
+//             model: LeadProduct,
+//             as: "lead_products",
+//             include: [
+//               {
+//                 model: ProductTemplete,
+//                 as: "product",
+//               },
+//             ],
+//           },
+//         ],
+//         order: [["created_at", "DESC"]],
+//       });
+//     } else {
+//       // ⭐ Non-admin → get leads ONLY if contact.superior_id = logged in user
+//       leads = await Lead.findAll({
+//         include: [
+//           {
+//             model: Contact,
+//             as: "contact",
+//             required: true,
+//             where: { superior_id: id }, // ⭐ important filter
+//           },
+//           {
+//             model: LeadProduct,
+//             as: "lead_products",
+//             include: [
+//               {
+//                 model: ProductTemplete,
+//                 as: "product",
+//               },
+//             ],
+//           },
+//         ],
+//         order: [["created_at", "DESC"]],
+//       });
+//     }
+
+//     res.status(200).json(leads);
+
+//   } catch (error) {
+//     console.error("Error fetching leads:", error);
+//     res.status(500).json({
+//       message: "Error fetching leads",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
 export const getAllLeadsActived = async (req, res) => {
   try {
     const leads = await Lead.findAll({
@@ -138,6 +207,74 @@ export const getAllLeadsActived = async (req, res) => {
   }
 };
 
+
+
+
+
+// export const getAllLeadsActived = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     let leads;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin → Get ALL active leads
+//       leads = await Lead.findAll({
+//         where: { is_active: true },
+//         include: [
+//           {
+//             model: Contact,
+//             as: "contact",
+//           },
+//           {
+//             model: LeadProduct,
+//             as: "lead_products",
+//             include: [
+//               {
+//                 model: ProductTemplete,
+//                 as: "product",
+//               },
+//             ],
+//           },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+//     } else {
+//       // ⭐ Non-admin → Get only active leads they own via contact.superior_id
+//       leads = await Lead.findAll({
+//         where: { is_active: true },
+//         include: [
+//           {
+//             model: Contact,
+//             as: "contact",
+//             required: true,
+//             where: { superior_id: id },  // ⭐ Important filtering
+//           },
+//           {
+//             model: LeadProduct,
+//             as: "lead_products",
+//             include: [
+//               {
+//                 model: ProductTemplete,
+//                 as: "product",
+//               },
+//             ],
+//           },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+//     }
+
+//     res.status(200).json(leads);
+
+//   } catch (error) {
+//     console.error("Error fetching active leads:", error);
+//     res.status(500).json({
+//       message: "Error fetching active leads",
+//       error: error.message,
+//     });
+//   }
+// };
 
 
 // Get a single Lead by ID

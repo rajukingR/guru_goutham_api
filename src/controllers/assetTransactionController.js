@@ -215,6 +215,7 @@ export const createAssetTransaction = async (req, res) => {
     const {
       customer_id,
       product_id,
+      peripheral_asset_id_product_id,
       parent_asset_id,
       asset_id,
       size,
@@ -237,6 +238,7 @@ export const createAssetTransaction = async (req, res) => {
       {
         customer_id,
         product_id,
+        peripheral_asset_id_product_id,
         parent_asset_id,
         asset_id,
         size,
@@ -322,6 +324,7 @@ export const createAssetTransaction = async (req, res) => {
         {
           credit_note_id: creditNote.id,
           product_id: deliveryChallanItem.product_id,
+          peripheral_asset_id_product_id: peripheral_asset_id_product_id,
           product_name: deliveryChallanItem.product_name,
           quantity: 1,
           unit_price: price,

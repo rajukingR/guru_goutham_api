@@ -148,32 +148,32 @@ export const createDispatchOrder = async (req, res) => {
 
       // Create Delivery Challan Items
       // Create Delivery Challan Items
-if (items && Array.isArray(items)) {
-  const challanItems = items.map(item => {
-    // ✅ Fallback logic for prices
-    const finalPurchasePrice =
-      parseFloat(item.offer_purchase_price) > 0
-        ? parseFloat(item.offer_purchase_price)
-        : parseFloat(item.purchase_price);
+      if (items && Array.isArray(items)) {
+        const challanItems = items.map(item => {
+          // ✅ Fallback logic for prices
+          const finalPurchasePrice =
+            parseFloat(item.offer_purchase_price) > 0 ?
+            parseFloat(item.offer_purchase_price) :
+            parseFloat(item.purchase_price);
 
-    const finalRentPrice =
-      parseFloat(item.offer_rent_price_per_month) > 0
-        ? parseFloat(item.offer_rent_price_per_month)
-        : parseFloat(item.rent_price_per_month);
+          const finalRentPrice =
+            parseFloat(item.offer_rent_price_per_month) > 0 ?
+            parseFloat(item.offer_rent_price_per_month) :
+            parseFloat(item.rent_price_per_month);
 
-    return {
-      challan_id: deliveryChallan.id,
-      product_id: item.product_id,
-      product_name: item.product_name,
-      quantity: item.quantity,
-      unit_price: finalRentPrice,        // ✅ Always rent price
-      total_price: finalPurchasePrice,   // ✅ Always purchase price
-      device_ids: item.device_ids || []
-    };
-  });
+          return {
+            challan_id: deliveryChallan.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            unit_price: finalRentPrice, // ✅ Always rent price
+            total_price: finalPurchasePrice, // ✅ Always purchase price
+            device_ids: item.device_ids || []
+          };
+        });
 
-  await DeliveryChallanItem.bulkCreate(challanItems);
-}
+        await DeliveryChallanItem.bulkCreate(challanItems);
+      }
 
     }
 
@@ -219,6 +219,52 @@ export const getAllDispatchOrders = async (req, res) => {
   }
 };
 
+
+
+
+// export const getAllDispatchOrders = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     let orders;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin → all dispatch orders
+//       orders = await DispatchOrder.findAll({
+//         include: [
+//           { model: DispatchOrderItem, as: "items" },
+//           { model: Contact, as: "contact" },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+
+//     } else {
+//       // ⭐ Non-admin → only orders where Contact.superior_id = login user
+//       orders = await DispatchOrder.findAll({
+//         include: [
+//           { model: DispatchOrderItem, as: "items" },
+//           {
+//             model: Contact,
+//             as: "contact",
+//             required: true,
+//             where: { superior_id: id }, // ⭐ FILTER HERE
+//           },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+//     }
+
+//     res.json(orders);
+
+//   } catch (err) {
+//     res.status(500).json({
+//       message: "Failed to fetch orders",
+//       error: err.message,
+//     });
+//   }
+// };
+
+
 export const getAllApprovedDispatchOrders = async (req, res) => {
   try {
     // Step 1: Get dispatch_order_ids from GRNs where grn_status = "Approved"
@@ -243,8 +289,7 @@ export const getAllApprovedDispatchOrders = async (req, res) => {
           [Op.notIn]: excludeIds,
         },
       },
-      include: [
-        {
+      include: [{
           model: db.DispatchOrderItem,
           as: "items",
         },
@@ -257,7 +302,9 @@ export const getAllApprovedDispatchOrders = async (req, res) => {
           as: "order_address",
         },
       ],
-      order: [["id", "DESC"]],
+      order: [
+        ["id", "DESC"]
+      ],
     });
 
     // Step 3: Exclude Buy orders where peripheral_update = 0
@@ -273,11 +320,10 @@ export const getAllApprovedDispatchOrders = async (req, res) => {
         zip: o.order_address?.shipping_pincode || o.pincode,
         city: o.order_address?.shipping_city || o.city,
         state: o.order_address?.shipping_state || o.state,
-        street:
-          (o.order_address?.shipping_street || "") +
-          (o.order_address?.shipping_landmark
-            ? ", " + o.order_address.shipping_landmark
-            : o.street || o.landmark || ""),
+        street: (o.order_address?.shipping_street || "") +
+          (o.order_address?.shipping_landmark ?
+            ", " + o.order_address.shipping_landmark :
+            o.street || o.landmark || ""),
         country: o.order_address?.shipping_country || o.country,
         pincode: o.order_address?.shipping_pincode || o.pincode,
       };
@@ -534,7 +580,9 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
     // Step 1: Get GRN-approved DispatchOrder IDs
     const grnApprovedDispatchOrderIds = await GRN.findAll({
       attributes: ["dispatch_order_id"],
-      where: { grn_status: "Approved" },
+      where: {
+        grn_status: "Approved"
+      },
       raw: true,
     });
     const excludeIds = grnApprovedDispatchOrderIds.map(
@@ -545,14 +593,27 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
     const allApprovedOrders = await DispatchOrder.findAll({
       where: {
         dispatch_order_status: "Approved",
-        id: { [Op.notIn]: excludeIds },
+        id: {
+          [Op.notIn]: excludeIds
+        },
       },
-      include: [
-        { model: DispatchOrderItem, as: "items" },
-        { model: Contact, as: "contact" },
-        { model: DeliveryChallan, as: "delivery_challans", required: false },
+      include: [{
+          model: DispatchOrderItem,
+          as: "items"
+        },
+        {
+          model: Contact,
+          as: "contact"
+        },
+        {
+          model: DeliveryChallan,
+          as: "delivery_challans",
+          required: false
+        },
       ],
-      order: [["id", "DESC"]],
+      order: [
+        ["id", "DESC"]
+      ],
     });
 
     // Step 3: Fetch Approved Direct Invoices from Quotations
@@ -561,11 +622,19 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
         is_direct_invoice: 1,
         status: "Approved",
       },
-      include: [
-        { model: QuotationItem, as: "items" },
-        { model: Contact, as: "customer", required: false },
+      include: [{
+          model: QuotationItem,
+          as: "items"
+        },
+        {
+          model: Contact,
+          as: "customer",
+          required: false
+        },
       ],
-      order: [["id", "DESC"]],
+      order: [
+        ["id", "DESC"]
+      ],
     });
 
     // Step 4: Apply filter logic to DispatchOrders
@@ -581,9 +650,9 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
       } else {
         const hasValidDC = order.delivery_challans?.some(
           (dc) =>
-            dc.dc_status === "Delivered" &&
-            dc.peripheral_update === false &&
-            dc.defualt_dc === false
+          dc.dc_status === "Delivered" &&
+          dc.peripheral_update === false &&
+          dc.defualt_dc === false
         );
 
         if (hasValidDC) {
@@ -607,8 +676,13 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
     for (const order of combinedOrders) {
       // --- 5.1 Handle Credit Notes ---
       const creditNotes = await CreditNote.findAll({
-        where: { dispatch_order_id: order.id },
-        include: [{ model: CreditNoteItem, as: "items" }],
+        where: {
+          dispatch_order_id: order.id
+        },
+        include: [{
+          model: CreditNoteItem,
+          as: "items"
+        }],
       });
 
       const allReturnedItems = [];
@@ -625,7 +699,9 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
       // --- 5.2 Handle Asset Swaps ---
       const assetSwaps = await AssetSwap.findAll({
         where: {
-          product_id: { [Op.in]: order.items.map((i) => i.product_id) },
+          product_id: {
+            [Op.in]: order.items.map((i) => i.product_id)
+          },
         },
       });
 
@@ -684,7 +760,9 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
     // Step 6: Merge Quotations (direct invoices) into result
     const formattedQuotations = directInvoiceQuotations.map((q) => {
       return {
-        ...q.get({ plain: true }),
+        ...q.get({
+          plain: true
+        }),
         type: "DirectInvoice",
       };
     });
@@ -704,6 +782,197 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
   }
 };
 
+
+
+
+
+// export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user;
+
+//     // Step 1: Get GRN-approved DispatchOrder IDs
+//     const grnApprovedDispatchOrderIds = await GRN.findAll({
+//       attributes: ["dispatch_order_id"],
+//       where: { grn_status: "Approved" },
+//       raw: true,
+//     });
+//     const excludeIds = grnApprovedDispatchOrderIds.map(
+//       (grn) => grn.dispatch_order_id
+//     );
+
+//     let allApprovedOrders;
+
+//     if (role_name === "Admin") {
+//       // ⭐ ADMIN: get ALL approved dispatch orders
+//       allApprovedOrders = await DispatchOrder.findAll({
+//         where: {
+//           dispatch_order_status: "Approved",
+//           id: { [Op.notIn]: excludeIds },
+//         },
+//         include: [
+//           { model: DispatchOrderItem, as: "items" },
+//           { model: Contact, as: "contact" },
+//           { model: DeliveryChallan, as: "delivery_challans", required: false },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+
+//     } else {
+//       // ⭐ NON-ADMIN: filter by Contact.superior_id
+//       allApprovedOrders = await DispatchOrder.findAll({
+//         where: {
+//           dispatch_order_status: "Approved",
+//           id: { [Op.notIn]: excludeIds },
+//         },
+//         include: [
+//           { model: DispatchOrderItem, as: "items" },
+//           {
+//             model: Contact,
+//             as: "contact",
+//             required: true,
+//             where: { superior_id: id },  // ⭐ IMPORTANT FILTER HERE
+//           },
+//           { model: DeliveryChallan, as: "delivery_challans", required: false },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+//     }
+
+//     // ⭐ EVERYTHING BELOW REMAINS EXACTLY AS YOU WROTE
+//     // Step 3: Fetch Approved Direct Invoices from Quotations
+//     const directInvoiceQuotations = await Quotation.findAll({
+//       where: {
+//         is_direct_invoice: 1,
+//         status: "Approved",
+//       },
+//       include: [
+//         { model: QuotationItem, as: "items" },
+//         { model: Contact, as: "customer", required: false },
+//       ],
+//       order: [["id", "DESC"]],
+//     });
+
+//     const latestRentPerCustomer = {}; 
+//     const buyOrders = [];
+
+//     for (const order of allApprovedOrders) {
+//       if (order.convert_rent_to_sale === "Buy") {
+//         if (order.peripheral_update === false) {
+//           order.dataValues.type = "Buy";
+//           buyOrders.push(order);
+//         }
+//       } else {
+//         const hasValidDC = order.delivery_challans?.some(
+//           (dc) =>
+//             dc.dc_status === "Delivered" &&
+//             dc.peripheral_update === false &&
+//             dc.defualt_dc === false
+//         );
+
+//         if (hasValidDC) {
+//           const customerCode = order.customer_code || order.contact?.id;
+//           const paymentType = order.payment_type || "Unknown";
+//           const key = `${customerCode}_${paymentType}`;
+
+//           if (!latestRentPerCustomer[key]) {
+//             latestRentPerCustomer[key] = order;
+//           }
+//         }
+//       }
+//     }
+
+//     const combinedOrders = [
+//       ...Object.values(latestRentPerCustomer),
+//       ...buyOrders,
+//     ];
+
+//     for (const order of combinedOrders) {
+//       const creditNotes = await CreditNote.findAll({
+//         where: { dispatch_order_id: order.id },
+//         include: [{ model: CreditNoteItem, as: "items" }],
+//       });
+
+//       const allReturnedItems = [];
+//       for (const creditNote of creditNotes) {
+//         for (const item of creditNote.items) {
+//           allReturnedItems.push({
+//             product_id: item.product_id,
+//             returned_quantity: item.quantity,
+//             returned_device_ids: item.device_ids || [],
+//           });
+//         }
+//       }
+
+//       const assetSwaps = await AssetSwap.findAll({
+//         where: {
+//           product_id: { [Op.in]: order.items.map((i) => i.product_id) },
+//         },
+//       });
+
+//       const swappedItems = assetSwaps.map((swap) => ({
+//         product_id: swap.product_id,
+//         swapped_asset_id: swap.asset_id,
+//       }));
+
+//       for (const item of order.items) {
+//         const matchedReturns = allReturnedItems.filter(
+//           (ret) => ret.product_id === item.product_id
+//         );
+
+//         let totalReturnedQty = 0;
+//         let returnedDeviceIds = [];
+
+//         for (const ret of matchedReturns) {
+//           totalReturnedQty += ret.returned_quantity;
+//           if (Array.isArray(ret.returned_device_ids)) {
+//             returnedDeviceIds.push(...ret.returned_device_ids);
+//           }
+//         }
+
+//         item.dataValues.quantity = Math.max(0, item.quantity - totalReturnedQty);
+//         item.dataValues.device_ids = item.device_ids?.filter(
+//           (id) => !returnedDeviceIds.includes(id)
+//         );
+
+//         const matchedSwaps = swappedItems.filter(
+//           (s) => s.product_id === item.product_id
+//         );
+
+//         if (matchedSwaps.length > 0) {
+//           const swappedAssetIds = matchedSwaps.map((s) => s.swapped_asset_id);
+//           item.dataValues.device_ids = item.dataValues.device_ids?.filter(
+//             (id) => !swappedAssetIds.includes(id)
+//           );
+//           item.dataValues.quantity = item.dataValues.device_ids?.length || 0;
+//         }
+
+//         if (!item.dataValues.device_ids || item.dataValues.device_ids.length === 0) {
+//           item.dataValues.quantity = 0;
+//         } else {
+//           item.dataValues.quantity = item.dataValues.device_ids.length;
+//         }
+//       }
+//     }
+
+//     const formattedQuotations = directInvoiceQuotations.map((q) => ({
+//       ...q.get({ plain: true }),
+//       type: "DirectInvoice",
+//     }));
+
+//     const sortedCombinedOrders = [...combinedOrders, ...formattedQuotations].sort(
+//       (a, b) => b.id - a.id
+//     );
+
+//     res.json(sortedCombinedOrders);
+
+//   } catch (err) {
+//     console.error("Error fetching dispatch orders:", err);
+//     res.status(500).json({
+//       message: "Failed to fetch filtered dispatch orders",
+//       error: err.message,
+//     });
+//   }
+// };
 
 
 
@@ -739,7 +1008,9 @@ export const getDispatchOrderById = async (req, res) => {
 // ✅ Update Dispatch Order and Its Items + Related Delivery Challans
 export const updateDispatchOrder = async (req, res) => {
   try {
-    const { id } = req.params; // numeric PK
+    const {
+      id
+    } = req.params; // numeric PK
     const {
       items,
       is_direct_invoice,
@@ -773,18 +1044,43 @@ export const updateDispatchOrder = async (req, res) => {
       ...orderData
     } = req.body;
 
+
+
+    // 1. Read values from req.body safely
+    let currentStatus = req.body.dispatch_order_status;
+    let updatedIsActive = req.body.is_active;
+
+    // 2. If status is provided → update is_active
+    if (currentStatus === "Approved") {
+      updatedIsActive = true;
+    }
+    if (currentStatus === "Pending") {
+      updatedIsActive = false;
+    }
+
+    // 3. If is_active is provided → update status
+    if (updatedIsActive === true) {
+      currentStatus = "Approved";
+    }
+    if (updatedIsActive === false) {
+      currentStatus = "Pending";
+    }
+
+
     // ✅ Find order
     const order = await DispatchOrder.findByPk(id);
     if (!order) {
-      return res.status(404).json({ message: "Dispatch order not found" });
+      return res.status(404).json({
+        message: "Dispatch order not found"
+      });
     }
 
     // ✅ Decide order_sale_date
     let orderSaleDate = null;
     if (convert_rent_to_sale === "Buy") {
-      orderSaleDate = bodyOrderSaleDate
-        ? new Date(bodyOrderSaleDate).toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0];
+      orderSaleDate = bodyOrderSaleDate ?
+        new Date(bodyOrderSaleDate).toISOString().split("T")[0] :
+        new Date().toISOString().split("T")[0];
     }
 
     // ✅ Update Dispatch Order
@@ -792,6 +1088,8 @@ export const updateDispatchOrder = async (req, res) => {
       ...orderData,
       dispatch_order_id,
       dispatch_order_date,
+      dispatch_order_status: currentStatus, // ✔ always correct
+      is_active: updatedIsActive,
       customer_code,
       order_id,
       order_number,
@@ -821,7 +1119,11 @@ export const updateDispatchOrder = async (req, res) => {
 
     // ✅ Replace Dispatch Order Items
     if (items && Array.isArray(items)) {
-      await DispatchOrderItem.destroy({ where: { dispatch_order_id: order.id } });
+      await DispatchOrderItem.destroy({
+        where: {
+          dispatch_order_id: order.id
+        }
+      });
       const enrichedItems = items.map((item) => ({
         ...item,
         dispatch_order_id: order.id, // numeric FK
@@ -834,7 +1136,9 @@ export const updateDispatchOrder = async (req, res) => {
     if (is_direct_invoice) {
       // ✅ Find existing Delivery Challan
       deliveryChallan = await DeliveryChallan.findOne({
-        where: { dispatch_order_id: order.id },
+        where: {
+          dispatch_order_id: order.id
+        },
       });
 
       if (deliveryChallan) {
@@ -870,7 +1174,11 @@ export const updateDispatchOrder = async (req, res) => {
         });
 
         // Replace challan items
-        await DeliveryChallanItem.destroy({ where: { challan_id: deliveryChallan.id } });
+        await DeliveryChallanItem.destroy({
+          where: {
+            challan_id: deliveryChallan.id
+          }
+        });
         if (items && Array.isArray(items)) {
           const challanItems = items.map((item) => ({
             challan_id: deliveryChallan.id,
@@ -903,7 +1211,7 @@ export const updateDispatchOrder = async (req, res) => {
           pan_number: pan_number || "",
           remarks: remarks || "",
           type: convert_rent_to_sale,
-          payment_type:convert_rent_to_sale,
+          payment_type: convert_rent_to_sale,
           regular_dc: regular_dispatch_order,
           industry: industry || "",
           shipping_ordered_by,
@@ -937,10 +1245,16 @@ export const updateDispatchOrder = async (req, res) => {
     } else {
       // ❌ If not direct invoice → delete challan & items
       const existingChallan = await DeliveryChallan.findOne({
-        where: { dispatch_order_id: order.id },
+        where: {
+          dispatch_order_id: order.id
+        },
       });
       if (existingChallan) {
-        await DeliveryChallanItem.destroy({ where: { challan_id: existingChallan.id } });
+        await DeliveryChallanItem.destroy({
+          where: {
+            challan_id: existingChallan.id
+          }
+        });
         await existingChallan.destroy();
       }
     }
@@ -976,12 +1290,18 @@ export const updateDispatchOrder = async (req, res) => {
 export const deleteDispatchOrder = async (req, res) => {
   const transaction = await db.sequelize.transaction(); // ✅ use sequelize from db
   try {
-    const { id } = req.params;
+    const {
+      id
+    } = req.params;
 
-    const order = await DispatchOrder.findByPk(id, { transaction });
+    const order = await DispatchOrder.findByPk(id, {
+      transaction
+    });
     if (!order) {
       await transaction.rollback();
-      return res.status(404).json({ message: "Order not found" });
+      return res.status(404).json({
+        message: "Order not found"
+      });
     }
 
     // ✅ If this is a direct invoice, delete challans + challan items
@@ -997,22 +1317,27 @@ export const deleteDispatchOrder = async (req, res) => {
       for (const challan of challans) {
         // delete items first
         await DeliveryChallanItem.destroy({
-          where: { challan_id: challan.id },
+          where: {
+            challan_id: challan.id
+          },
           transaction,
         });
 
         // then delete challan itself
-        await challan.destroy({ transaction });
+        await challan.destroy({
+          transaction
+        });
       }
     }
 
     // ✅ Delete DispatchOrder (cascade should handle DispatchOrderItems)
-    await order.destroy({ transaction });
+    await order.destroy({
+      transaction
+    });
 
     await transaction.commit();
     res.json({
-      message:
-        "Dispatch order deleted (and related delivery challans + items deleted if direct invoice)",
+      message: "Dispatch order deleted (and related delivery challans + items deleted if direct invoice)",
     });
   } catch (err) {
     await transaction.rollback();
@@ -1022,4 +1347,3 @@ export const deleteDispatchOrder = async (req, res) => {
     });
   }
 };
-

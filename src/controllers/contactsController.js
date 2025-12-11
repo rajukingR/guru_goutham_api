@@ -1,8 +1,7 @@
 import db from '../models/index.js';
 import { Op } from 'sequelize'; // ✅ ADD THIS LINE
-
-const Contact = db.Contact;
-
+const { Sequelize } = db;
+const { Contact, User } = db;
 const DeliveryChallan = db.DeliveryChallan;
 
 
@@ -10,6 +9,7 @@ const DeliveryChallan = db.DeliveryChallan;
 export const createContact = async (req, res) => {
   try {
     const {
+      superior_id,
       first_name,
       last_name,
       email,
@@ -25,10 +25,12 @@ export const createContact = async (req, res) => {
       owner,
       remarks,
       contact_generated_by,
+      is_active,
       status // NEW FIELD
     } = req.body;
 
     const contact = await Contact.create({
+      superior_id,
       first_name,
       last_name,
       email,
@@ -44,6 +46,7 @@ export const createContact = async (req, res) => {
       owner,
       remarks,
       contact_generated_by,
+      is_active,
       status // NEW FIELD
     });
 
@@ -70,7 +73,52 @@ export const getAllContacts = async (req, res) => {
 
 
 
-const { Sequelize } = db;
+// export const getAllContacts = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user; // taken from JWT
+
+//     let contacts;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin → get ALL contacts
+//       contacts = await Contact.findAll({
+//         include: [
+//           {
+//             model: User,
+//             as: "superior",
+//             attributes: ["id", "full_name", "email", "role_name"],
+//             required: false,
+//           },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+//     } else {
+//       contacts = await Contact.findAll({
+//         where: { superior_id: id },
+//         include: [
+//           {
+//             model: User,
+//             as: "superior",
+//             attributes: ["id", "full_name", "email", "role_name"],
+//             required: false,
+//           },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+//     }
+
+//     res.status(200).json(contacts);
+
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({
+//       message: "Error fetching contacts",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
 
 export const getDeliveryChallansContact = async (req, res) => {
   try {
@@ -118,7 +166,7 @@ export const getAllContactsActived = async (req, res) => {
   try {
     const contacts = await Contact.findAll({
       where: {
-        status: 'Active',
+        is_active: 1,
       }
     });
 
@@ -130,6 +178,59 @@ export const getAllContactsActived = async (req, res) => {
 };
 
 
+
+
+
+// export const getAllContactsActived = async (req, res) => {
+//   try {
+//     const { role_name, id } = req.user; // from JWT
+
+//     let contacts;
+
+//     if (role_name === "Admin") {
+//       // ⭐ Admin → get all Active contacts
+//       contacts = await Contact.findAll({
+//         where: { status: "Active" },
+//         include: [
+//           {
+//             model: User,
+//             as: "superior",
+//             attributes: ["id", "full_name", "email", "role_name"],
+//             required: false,
+//           },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+
+//     } else {
+//       // ⭐ Non-admin → get only their Active contacts
+//       contacts = await Contact.findAll({
+//         where: {
+//           status: "Active",
+//           superior_id: id,    // ⭐ IMPORTANT FILTER
+//         },
+//         include: [
+//           {
+//             model: User,
+//             as: "superior",
+//             attributes: ["id", "full_name", "email", "role_name"],
+//             required: false,
+//           },
+//         ],
+//         order: [["id", "DESC"]],
+//       });
+//     }
+
+//     res.status(200).json(contacts);
+
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({
+//       message: "Error fetching active contacts",
+//       error: error.message,
+//     });
+//   }
+// };
 
 // Get contact by ID
 export const getContactById = async (req, res) => {
@@ -152,6 +253,7 @@ export const getContactById = async (req, res) => {
 export const updateContact = async (req, res) => {
   try {
     const { id } = req.params;
+
     const {
       first_name,
       last_name,
@@ -168,14 +270,22 @@ export const updateContact = async (req, res) => {
       owner,
       remarks,
       contact_generated_by,
-      status // NEW FIELD
+      is_active
     } = req.body;
 
     const contact = await Contact.findByPk(id);
     if (!contact) {
-      return res.status(404).json({ message: 'Contact not found' });
+      return res.status(404).json({ message: "Contact not found" });
     }
 
+    // ⭐ Auto-set status based on is_active
+    let statusValue = contact.status; // default existing
+
+    if (typeof is_active === "boolean") {
+      statusValue = is_active ? "Active" : "Inactive";
+    }
+
+    // ⭐ Update fields
     await contact.update({
       first_name,
       last_name,
@@ -192,16 +302,25 @@ export const updateContact = async (req, res) => {
       owner,
       remarks,
       contact_generated_by,
-      status, // NEW FIELD
+      is_active,
+      status: statusValue,   // ⭐ Auto-update status
       updated_at: new Date()
     });
 
-    res.status(200).json({ message: 'Contact updated successfully', contact });
+    res.status(200).json({
+      message: "Contact updated successfully",
+      contact,
+    });
+
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error updating contact', error });
+    res.status(500).json({
+      message: "Error updating contact",
+      error,
+    });
   }
 };
+
 
 
 // Delete contact

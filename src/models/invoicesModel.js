@@ -151,6 +151,12 @@ export default (sequelize, DataTypes) => {
       foreignKey: 'invoice_id',
       as: 'shippingDetail',
     });
+
+    Invoice.belongsTo(models.Contact, {
+   foreignKey: "customer_id",
+   as: "customer",
+});
+
   };
 
   return Invoice;

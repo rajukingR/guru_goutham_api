@@ -216,6 +216,7 @@ export default (sequelize, DataTypes) => {
       foreignKey: 'dispatch_order_id',
       as: 'dispatch_order',
     });
+    
 
   };
 

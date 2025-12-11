@@ -2,6 +2,7 @@ import express from 'express';
 import {
   createProduct,
   getAllProducts,
+  getAllProductsWithoutActive,
   getProductWithAssets,
   getAllAssembledDesktops,
   getProductById,
@@ -18,6 +19,7 @@ const router = express.Router();
 
 router.post('/create', upload.single("product_image"), authMiddleware, createProduct);
 router.get('/', authMiddleware, getAllProducts);
+router.get('/without-active', authMiddleware, getAllProductsWithoutActive);
 router.get('/products-with-assets', authMiddleware, getProductWithAssets);
 router.get('/assembled-desktops', authMiddleware, getAllAssembledDesktops);
 router.get('/:id', getProductById);

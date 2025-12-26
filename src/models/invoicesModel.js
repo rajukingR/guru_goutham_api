@@ -132,6 +132,11 @@ export default (sequelize, DataTypes) => {
     remarks: {
       type: DataTypes.TEXT,
     },
+    is_small_amount: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     created_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,

@@ -493,7 +493,7 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
   }
 
   try {
-    // 1. Fetch challans with items + product + customer
+    // 1. Fetch challans with items, product, customer
     let deliveryChallans = await DeliveryChallan.findAll({
       where: {
         customer_code
@@ -503,7 +503,7 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
           as: 'items',
           include: [{
             model: ProductTemplete,
-            as: 'product',
+            as: 'product'
           }]
         },
         {
@@ -514,8 +514,7 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
             'email', 'phone_number', 'company_name',
             'gst', 'pan_no', 'address',
             'industry', 'payment_type', 'owner', 'status'
-          ],
-          required: false
+          ]
         }
       ],
       order: [
@@ -523,10 +522,10 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
       ]
     });
 
-    // 2. Filter out challans where peripheral_update = true
+    // 2. Remove peripheral_update = true challans
     deliveryChallans = deliveryChallans.filter(dc => !dc.peripheral_update);
 
-    // 3. Fetch related credit notes
+    // 3. Fetch credit notes
     const dispatchOrderIds = deliveryChallans.map(dc => dc.dispatch_order_id);
     const creditNotes = await CreditNote.findAll({
       where: {
@@ -546,11 +545,10 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
       creditNoteMap[cn.dispatch_order_id].push(...(cn.items || []));
     });
 
-    // 4. Fetch asset swaps for all product IDs and device IDs
+    // 4. Collect all device IDs + product IDs
     const allDeviceIds = [];
     const allProductIds = new Set();
 
-    // Collect all device IDs and product IDs from challan items
     deliveryChallans.forEach(dc => {
       dc.items.forEach(item => {
         const deviceIds = parseDeviceIds(item.device_ids);
@@ -559,7 +557,7 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
       });
     });
 
-    // Fetch asset swaps for these product IDs and device IDs
+    // 5. Fetch swapped devices
     const assetSwaps = await AssetSwap.findAll({
       where: {
         [Op.or]: [{
@@ -576,60 +574,120 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
       }
     });
 
-    // Create a map of swapped device IDs for quick lookup
-    const swappedDeviceIds = new Set(assetSwaps.map(swap => swap.asset_id));
+    const swappedDeviceIds = new Set(assetSwaps.map(s => s.asset_id));
 
-    // 5. Adjust items (remove returned and swapped device_ids)
-    for (const challan of deliveryChallans) {
-      const creditItems = creditNoteMap[challan.dispatch_order_id] || [];
+    // 6. Customer
+    let customer = deliveryChallans[0]?.customer || null;
 
-      for (const item of challan.items) {
+    // 7. Fetch asset transactions
+    let assetTransactions = [];
+    if (customer && allDeviceIds.length > 0) {
+      assetTransactions = await AssetTransaction.findAll({
+        where: {
+          customer_id: customer.id,
+          parent_asset_id: {
+            [Op.in]: allDeviceIds
+          }
+        },
+        order: [
+          ['parent_asset_id', 'ASC'],
+          ['action_date', 'ASC']
+        ]
+      });
+    }
+
+    // 8. Format transactions by device_id
+    const assetTransactionsByDevice = {};
+    assetTransactions.forEach(txn => {
+      const deviceId = txn.parent_asset_id;
+      if (!assetTransactionsByDevice[deviceId]) {
+        assetTransactionsByDevice[deviceId] = [];
+      }
+      assetTransactionsByDevice[deviceId].push({
+        id: txn.id,
+        customer_id: txn.customer_id,
+        product_id: txn.product_id,
+        peripheral_asset_id_product_id: txn.peripheral_asset_id_product_id,
+        parent_asset_id: txn.parent_asset_id,
+        asset_id: txn.asset_id,
+        size: txn.size,
+        action_date: txn.action_date,
+        item_name: txn.item_name,
+        specification: txn.specification,
+        item_type: txn.item_type,
+        price: txn.price,
+        status: txn.status,
+        is_default: txn.is_default,
+        credit_note_id: txn.credit_note_id,
+        created_at: txn.created_at,
+        updated_at: txn.updated_at
+      });
+    });
+
+    // 9. Apply credit notes, swap logic and attach asset_transactions
+    deliveryChallans.forEach(dc => {
+      const creditItems = creditNoteMap[dc.dispatch_order_id] || [];
+
+      dc.items.forEach(item => {
         const originalDeviceIds = parseDeviceIds(item.device_ids);
         let updatedDeviceIds = [...originalDeviceIds];
 
-        // Remove returned devices
-        const matchingReturns = creditItems.filter(ci => ci.product_id === item.product_id);
-        for (const ret of matchingReturns) {
-          const returnedIds = parseDeviceIds(ret.device_ids);
-          updatedDeviceIds = updatedDeviceIds.filter(id => !returnedIds.includes(id));
-        }
+        // Remove returned device IDs
+        creditItems
+          .filter(ci => ci.product_id === item.product_id)
+          .forEach(ret => {
+            const returnedIds = parseDeviceIds(ret.device_ids);
+            updatedDeviceIds = updatedDeviceIds.filter(id => !returnedIds.includes(id));
+          });
 
-        // Remove swapped devices
+        // Remove swapped device IDs
         updatedDeviceIds = updatedDeviceIds.filter(id => !swappedDeviceIds.has(id));
 
+        // Update item
         item.device_ids = updatedDeviceIds;
         item.quantity = updatedDeviceIds.length;
-      }
-    }
+      });
+    });
 
-    // 6. Transform output: customer once, challans array separately
-    let customer = null;
-    if (deliveryChallans.length > 0) {
-      customer = deliveryChallans[0].customer;
-    }
-
+    // 10. FINAL CHALLAN FORMAT (YOUR REQUIRED FORMAT)
     const challans = deliveryChallans.map(dc => {
       const plain = dc.get({
         plain: true
       });
       delete plain.customer;
+
+      plain.items = plain.items.map(item => {
+        const deviceIds = item.device_ids || [];
+
+        // Create EXACT required output format:
+        const asset_transactions = deviceIds.map(deviceId => ({
+          device_id: deviceId,
+          transactions: assetTransactionsByDevice[deviceId] || []
+        }));
+
+        return {
+          ...item,
+          asset_transactions
+        };
+      });
+
       return plain;
     });
 
+    // 11. Response
     res.status(200).json({
-      customer,
+      customer: customer || null,
       challans
     });
 
   } catch (error) {
-    console.error('Error fetching delivery challans by customer_code:', error);
+    console.error("Error fetching delivery challans:", error);
     res.status(500).json({
-      message: 'Error fetching delivery challans',
+      message: "Error fetching delivery challans",
       error: error.message
     });
   }
 };
-
 
 
 
@@ -827,21 +885,19 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
           total_quantity: deviceIds.length,
           created_at: item.created_at,
           updated_at: item.updated_at,
-          product: item.product ?
-            {
-              id: item.product.id,
-              product_name: item.product.product_name,
-              product_category: item.product.product_category,
-              ram: item.product.ram,
-              storage: item.product.storage,
-              disk_type: item.product.disk_type,
-              brand: item.product.brand,
-              model: item.product.model,
-              purchase_price: item.product.purchase_price,
-              rent_price_per_month: item.product.rent_price_per_month,
-              capacity: item.product.capacity,
-            } :
-            null,
+          product: item.product ? {
+            id: item.product.id,
+            product_name: item.product.product_name,
+            product_category: item.product.product_category,
+            ram: item.product.ram,
+            storage: item.product.storage,
+            disk_type: item.product.disk_type,
+            brand: item.product.brand,
+            model: item.product.model,
+            purchase_price: item.product.purchase_price,
+            rent_price_per_month: item.product.rent_price_per_month,
+            capacity: item.product.capacity,
+          } : null,
         };
       })
       .filter((item) => item.device_ids.length > 0);

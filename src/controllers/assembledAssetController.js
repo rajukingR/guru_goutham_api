@@ -31,7 +31,9 @@ export const createAssembledAsset = async (req, res) => {
 
     // ✅ Step 0: Check if parent_asset_id already exists
     const existingAsset = await AssembledAsset.findOne({
-      where: { parent_asset_id }
+      where: {
+        parent_asset_id
+      }
     });
 
     if (existingAsset) {
@@ -99,7 +101,9 @@ export const createAssembledAsset = async (req, res) => {
 
     if (Object.keys(productCountMap).length > 0) {
       const products = await ProductTemplete.findAll({
-        where: { id: Object.keys(productCountMap) },
+        where: {
+          id: Object.keys(productCountMap)
+        },
         attributes: ["id", "purchase_price", "rent_price_per_month"],
       });
 
@@ -125,12 +129,14 @@ export const createAssembledAsset = async (req, res) => {
       grade: 'Default Grade',
       model: assembled_name,
       processor: components?.processor?.model || '',
-      ram: components?.ram?.[0]?.size || '',
-      ramType: components?.ram?.[0]?.type || '',
-      storage: components?.storage?.[0]?.size || '',
-      disk_type: components?.storage?.[0]?.type || '',
-      ssd_type: components?.storage?.[0]?.type === 'SSD' ? components.storage[0].model : '',
+      ram: components?.ram?. [0]?.size || '',
+      ramType: components?.ram?. [0]?.type || '',
+      storage: components?.storage?. [0]?.size || '',
+      disk_type: components?.storage?. [0]?.type || '',
+      ssd_type: components?.storage?. [0]?.type === 'SSD' ? components.storage[0].model : '',
       smps: components?.smps?.model || '',
+      cabinet: components?.cabinet.model || '',
+      motherboard: components?.motherboard.model || '',
       capacity: components?.smps?.wattage || '',
       wifi_standard: components?.wifi?.wifi_standard || '',
       frequency_band: components?.wifi?.frequency_band || '',
@@ -215,7 +221,9 @@ export const getAssembledAssetById = async (req, res) => {
 // Update AssembledAsset and components
 export const updateAssembledAsset = async (req, res) => {
   try {
-    const { id } = req.params; // assembled_id
+    const {
+      id
+    } = req.params; // assembled_id
     const file = req.file;
     const body = req.body;
 
@@ -233,7 +241,9 @@ export const updateAssembledAsset = async (req, res) => {
     const duplicateAsset = await AssembledAsset.findOne({
       where: {
         parent_asset_id,
-        id: { [Op.ne]: id }, // exclude the current record
+        id: {
+          [Op.ne]: id
+        }, // exclude the current record
       },
     });
 
@@ -246,7 +256,9 @@ export const updateAssembledAsset = async (req, res) => {
     // Step 1: Find AssembledAsset
     const assembledAsset = await AssembledAsset.findByPk(id);
     if (!assembledAsset) {
-      return res.status(404).json({ message: "Assembled Asset not found" });
+      return res.status(404).json({
+        message: "Assembled Asset not found"
+      });
     }
 
     // Step 2: Update AssembledAsset
@@ -278,7 +290,10 @@ export const updateAssembledAsset = async (req, res) => {
 
             if (item.id) {
               await AssembledComponent.update(payload, {
-                where: { id: item.id, assembled_id: assembledAsset.id },
+                where: {
+                  id: item.id,
+                  assembled_id: assembledAsset.id
+                },
               });
               incomingComponentIds.push(item.id);
             } else {
@@ -303,7 +318,10 @@ export const updateAssembledAsset = async (req, res) => {
 
         if (value.id) {
           await AssembledComponent.update(payload, {
-            where: { id: value.id, assembled_id: assembledAsset.id },
+            where: {
+              id: value.id,
+              assembled_id: assembledAsset.id
+            },
           });
           incomingComponentIds.push(value.id);
         } else {
@@ -319,7 +337,9 @@ export const updateAssembledAsset = async (req, res) => {
     await AssembledComponent.destroy({
       where: {
         assembled_id: assembledAsset.id,
-        id: { [Op.notIn]: incomingComponentIds },
+        id: {
+          [Op.notIn]: incomingComponentIds
+        },
       },
     });
 
@@ -336,7 +356,9 @@ export const updateAssembledAsset = async (req, res) => {
 
     if (Object.keys(productCounts).length > 0) {
       const products = await ProductTemplete.findAll({
-        where: { id: Object.keys(productCounts) },
+        where: {
+          id: Object.keys(productCounts)
+        },
         attributes: ["id", "purchase_price", "rent_price_per_month"],
       });
 
@@ -349,7 +371,9 @@ export const updateAssembledAsset = async (req, res) => {
 
     // Step 5: Update ProductTemplete
     const existingProduct = await ProductTemplete.findOne({
-      where: { assembled_id: assembledAsset.id },
+      where: {
+        assembled_id: assembledAsset.id
+      },
     });
 
     if (existingProduct) {
@@ -359,15 +383,15 @@ export const updateAssembledAsset = async (req, res) => {
         rent_price_per_month: totalPerMonthPrice,
         model: assembled_name,
         processor: components?.processor?.model || "",
-        ram: components?.ram?.[0]?.size || "",
-        ramType: components?.ram?.[0]?.type || "",
-        storage: components?.storage?.[0]?.size || "",
-        disk_type: components?.storage?.[0]?.type || "",
-        ssd_type:
-          components?.storage?.[0]?.type === "SSD"
-            ? components.storage[0].model
-            : "",
+        ram: components?.ram?. [0]?.size || "",
+        ramType: components?.ram?. [0]?.type || "",
+        storage: components?.storage?. [0]?.size || "",
+        disk_type: components?.storage?. [0]?.type || "",
+        ssd_type: components?.storage?. [0]?.type === "SSD" ?
+          components.storage[0].model : "",
         smps: components?.smps?.model || "",
+        cabinet: components?.cabinet?. [0]?.model || "",
+        motherboard: components?.motherboard?. [0]?.model || "",
         capacity: components?.smps?.wattage || "",
         wifi_standard: components?.wifi?.wifi_standard || "",
         frequency_band: components?.wifi?.frequency_band || "",
@@ -403,20 +427,29 @@ export const deleteAssembledAsset = async (req, res) => {
   try {
     const asset = await AssembledAsset.findByPk(req.params.id);
     if (!asset) {
-      return res.status(404).json({ message: "Assembled Asset not found" });
+      return res.status(404).json({
+        message: "Assembled Asset not found"
+      });
     }
 
     // Delete the associated ProductTemplete where assembled_id matches
     await ProductTemplete.destroy({
-      where: { assembled_id: asset.id }
+      where: {
+        assembled_id: asset.id
+      }
     });
 
     // Delete the AssembledAsset itself
     await asset.destroy();
 
-    res.status(200).json({ message: "Assembled Asset and related ProductTemplete deleted" });
+    res.status(200).json({
+      message: "Assembled Asset and related ProductTemplete deleted"
+    });
   } catch (error) {
     console.error("Delete failed:", error);
-    res.status(500).json({ message: "Delete failed", error });
+    res.status(500).json({
+      message: "Delete failed",
+      error
+    });
   }
 };

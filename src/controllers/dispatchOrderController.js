@@ -51,7 +51,19 @@ export const createDispatchOrder = async (req, res) => {
       ...orderData
     } = req.body;
 
-    console.log("Received is_direct_invoice:", is_direct_invoice); // Debug log
+
+    // 1. Read values from req.body safely
+    let currentStatus = req.body.dispatch_order_status;
+    let updatedIsActive = req.body.is_active;
+
+    // 2. If status is provided → update is_active
+    if (currentStatus === "Approved") {
+      updatedIsActive = true;
+    }
+    if (currentStatus === "Pending") {
+      updatedIsActive = false;
+    }
+
 
     // Create Dispatch Order
     const newOrder = await DispatchOrder.create({
@@ -80,6 +92,7 @@ export const createDispatchOrder = async (req, res) => {
       industry,
       regular_dispatch_order,
       peripheral_update,
+      is_active: updatedIsActive,
       is_direct_invoice: is_direct_invoice || false // Make sure this is set in DispatchOrder
     });
 

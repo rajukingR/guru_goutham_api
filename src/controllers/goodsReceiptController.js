@@ -1631,6 +1631,289 @@ export const getApprovedProductSummary = async (req, res) => {
 
 
 
+
+
+export const getApprovedProductSummaryDashboard = async (req, res) => {
+  try {
+    const parseIds = (ids) => {
+      if (!ids) return [];
+      if (Array.isArray(ids)) return ids;
+      try {
+        return JSON.parse(ids);
+      } catch {
+        return [];
+      }
+    };
+
+    // 1. Get Approved GRNs
+    const approvedReceipts = await GoodsReceipt.findAll({
+      where: { goods_receipt_status: 'Approved' },
+      attributes: ['id']
+    });
+
+    const approvedReceiptIds = approvedReceipts.map(r => r.id);
+    const quantityMap = {};
+    const assetMap = {};
+
+    // 2. Fetch GRN Items
+    if (approvedReceiptIds.length > 0) {
+      const receiptItems = await GoodsReceiptItem.findAll({
+        where: { goods_receipt_id: approvedReceiptIds },
+        attributes: ['product_id', 'quantity', 'asset_ids']
+      });
+
+      for (const item of receiptItems) {
+        const productId = item.product_id;
+        const qty = item.quantity || 0;
+        const assets = parseIds(item.asset_ids);
+
+        quantityMap[productId] = (quantityMap[productId] || 0) + qty;
+        if (!assetMap[productId]) assetMap[productId] = [];
+        assetMap[productId].push(...assets);
+      }
+    }
+
+    // 3. ALL USED devices (both currently used AND returned)
+    const allUsedDeviceMap = {};
+
+    // 3.1 Invoice Items
+    const invoiceItems = await InvoiceItem.findAll({
+      attributes: ['product_id', 'device_ids']
+    });
+
+    for (const item of invoiceItems) {
+      const ids = parseIds(item.device_ids);
+      if (!allUsedDeviceMap[item.product_id]) allUsedDeviceMap[item.product_id] = new Set();
+      ids.forEach(id => allUsedDeviceMap[item.product_id].add(id));
+    }
+
+    // 3.2 Delivery Challan Items - DELIVERED items
+    const deliveredChallans = await DeliveryChallan.findAll({
+      where: { dc_status: 'Delivered' },
+      attributes: ['id']
+    });
+
+    const deliveredChallanIds = deliveredChallans.map(dc => dc.id);
+
+    if (deliveredChallanIds.length > 0) {
+      const deliveredChallanItems = await DeliveryChallanItem.findAll({
+        where: { 
+          challan_id: deliveredChallanIds 
+        },
+        attributes: ['product_id', 'device_ids']
+      });
+
+      for (const item of deliveredChallanItems) {
+        const ids = parseIds(item.device_ids);
+        if (!allUsedDeviceMap[item.product_id]) allUsedDeviceMap[item.product_id] = new Set();
+        ids.forEach(id => allUsedDeviceMap[item.product_id].add(id));
+      }
+    }
+
+    // 3.3 Dispatch Order Items - APPROVED items
+    const approvedDispatchOrders = await DispatchOrder.findAll({
+      where: { dispatch_order_status: 'Approved' },
+      attributes: ['id']
+    });
+
+    const approvedDispatchOrderIds = approvedDispatchOrders.map(order => order.id);
+
+    if (approvedDispatchOrderIds.length > 0) {
+      const dispatchOrderItems = await DispatchOrderItem.findAll({
+        where: { 
+          dispatch_order_id: approvedDispatchOrderIds 
+        },
+        attributes: ['product_id', 'device_ids']
+      });
+
+      for (const item of dispatchOrderItems) {
+        const ids = parseIds(item.device_ids);
+        if (!allUsedDeviceMap[item.product_id]) allUsedDeviceMap[item.product_id] = new Set();
+        ids.forEach(id => allUsedDeviceMap[item.product_id].add(id));
+      }
+    }
+
+    // 4. RETURNED assets (Credit Notes)
+    const creditReturnedMap = {};
+    const creditNoteItems = await CreditNoteItem.findAll({
+      attributes: ['product_id', 'device_ids']
+    });
+
+    for (const item of creditNoteItems) {
+      const ids = parseIds(item.device_ids);
+      if (!creditReturnedMap[item.product_id]) creditReturnedMap[item.product_id] = new Set();
+      ids.forEach(id => creditReturnedMap[item.product_id].add(id));
+    }
+
+    // 5. Asset Swaps
+    const swappedAssets = await AssetSwap.findAll({
+      attributes: ['product_id', 'asset_id']
+    });
+
+    const swappedAssetMap = {};
+    for (const swap of swappedAssets) {
+      if (!swappedAssetMap[swap.product_id]) swappedAssetMap[swap.product_id] = new Set();
+      swappedAssetMap[swap.product_id].add(swap.asset_id);
+    }
+
+    // 6. Assembled components
+    const assembledComponents = await AssembledComponent.findAll({
+      attributes: ['asset_id', 'product_id']
+    });
+
+    const allAssemblyAssetIds = new Set();
+    const assemblyAssetsByProduct = {};
+
+    for (const comp of assembledComponents) {
+      if (comp.asset_id) {
+        allAssemblyAssetIds.add(comp.asset_id);
+
+        if (!assemblyAssetsByProduct[comp.product_id]) {
+          assemblyAssetsByProduct[comp.product_id] = new Set();
+        }
+        assemblyAssetsByProduct[comp.product_id].add(comp.asset_id);
+      }
+    }
+
+    // 7. Product templates
+    const productIdsFromGRN = Object.keys(quantityMap).map(Number);
+    const productTemplatesGRN = await ProductTemplete.findAll({
+      where: { id: productIdsFromGRN }
+    });
+
+    const productMap = Object.fromEntries(productTemplatesGRN.map(p => [p.id, p.toJSON()]));
+
+    // Category-wise tracking
+    const categoryWiseData = {};
+
+    // Process products from GRN
+    for (const productId of productIdsFromGRN) {
+      const totalQty = quantityMap[productId];
+      const allAssetsFromGRN = assetMap[productId] || [];
+
+      // Remove assets that are part of assemblies
+      const assetsNotInAssemblies = allAssetsFromGRN.filter(assetId =>
+        !allAssemblyAssetIds.has(assetId)
+      );
+
+      const allUsedSet = allUsedDeviceMap[productId] || new Set();
+      const swappedSet = swappedAssetMap[productId] || new Set();
+
+      // Adjust quantities
+      const assemblyAssetsForThisProduct = assemblyAssetsByProduct[productId] || new Set();
+      const componentQty = assemblyAssetsForThisProduct.size;
+      const swappedCount = swappedSet.size;
+      
+      // Total quantity excludes assembled components and swapped assets
+      const adjustedTotalQty = totalQty - componentQty - swappedCount;
+
+      // Available assets = Total assets MINUS:
+      // - All used assets (both current and returned)
+      // - Swapped assets
+      // - Assets used in assemblies
+      let availableAssetIds = assetsNotInAssemblies.filter(id =>
+        !allUsedSet.has(id) && !swappedSet.has(id)
+      );
+
+      // Used quantity = Currently with clients
+      const currentlyUsedSet = new Set(
+        Array.from(allUsedSet).filter(id => {
+          const isReturned = creditReturnedMap[productId]?.has(id) || false;
+          return !isReturned || allUsedSet.has(id);
+        })
+      );
+      const usedQty = currentlyUsedSet.size;
+
+      const product = productMap[productId];
+      
+      // Category-wise aggregation
+      const productCategory = product?.product_category || 'Uncategorized';
+      if (!categoryWiseData[productCategory]) {
+        categoryWiseData[productCategory] = {
+          total_quantity: 0,
+          used_quantity: 0,
+          available_quantity: 0
+        };
+      }
+      
+      categoryWiseData[productCategory].total_quantity += adjustedTotalQty;
+      categoryWiseData[productCategory].used_quantity += usedQty;
+      categoryWiseData[productCategory].available_quantity += availableAssetIds.length;
+    }
+
+    // 8. Include Assembled Assets (that are not in GRN list)
+    const assembledAssets = await AssembledAsset.findAll({
+      where: { is_active: 1 }
+    });
+
+    const assembledProductTemplates = await ProductTemplete.findAll({
+      where: { assembled_id: assembledAssets.map(a => a.id) }
+    });
+
+    for (const asset of assembledAssets) {
+      const product = assembledProductTemplates.find(p => p.assembled_id === asset.id);
+      if (!product) continue;
+
+      const productId = product.id;
+      
+      // Skip if already counted from GRN
+      if (productIdsFromGRN.includes(productId)) continue;
+
+      const parentAssetId = asset.parent_asset_id;
+      const allUsedSet = allUsedDeviceMap[productId] || new Set();
+      const swappedSet = swappedAssetMap[productId] || new Set();
+
+      const isUsed = allUsedSet.has(parentAssetId);
+      const isSwapped = swappedSet.has(parentAssetId);
+
+      const availableAssetIds = (!isUsed && !isSwapped) ? [parentAssetId] : [];
+
+      const usedQty = (isUsed && !isSwapped) ? 1 : 0;
+      const totalQtyForAsset = isSwapped ? 0 : 1;
+      const availableQtyForAsset = availableAssetIds.length;
+
+      // Category-wise aggregation for assembled assets
+      const productCategory = product?.product_category || 'Uncategorized';
+      if (!categoryWiseData[productCategory]) {
+        categoryWiseData[productCategory] = {
+          total_quantity: 0,
+          used_quantity: 0,
+          available_quantity: 0
+        };
+      }
+      
+      categoryWiseData[productCategory].total_quantity += totalQtyForAsset;
+      categoryWiseData[productCategory].used_quantity += usedQty;
+      categoryWiseData[productCategory].available_quantity += availableQtyForAsset;
+    }
+
+    // Format category-wise data as array
+    const categorySummary = Object.entries(categoryWiseData).map(([category, data]) => ({
+      product_category: category,
+      available_quantity: data.available_quantity,
+      total_quantity: data.total_quantity,
+      used_quantity: data.used_quantity
+    }));
+
+    // Calculate summary totals
+    const summary = {
+      total_used_quantity: Object.values(categoryWiseData).reduce((sum, cat) => sum + cat.used_quantity, 0),
+      total_available_quantity: Object.values(categoryWiseData).reduce((sum, cat) => sum + cat.available_quantity, 0),
+      total_stock_quantity: Object.values(categoryWiseData).reduce((sum, cat) => sum + cat.total_quantity, 0),
+      total_assembled_components: allAssemblyAssetIds.size
+    };
+
+    res.status(200).json({
+      summary,
+      category_summary: categorySummary
+    });
+
+  } catch (error) {
+    console.error("Error in getApprovedProductSummary:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  }
+};
+
 // Update a Goods Receipt
 // Update a Goods Receipt
 export const updateGoodsReceipt = async (req, res) => {

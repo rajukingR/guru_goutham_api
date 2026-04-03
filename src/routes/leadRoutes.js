@@ -2,6 +2,7 @@ import express from 'express';
 import {
   createLead,
   getAllLeads,
+  getAllLeads1,
   getLeadById,
   updateLead,
   deleteLead,
@@ -14,6 +15,8 @@ const router = express.Router();
 
 router.post('/create', authMiddleware, createLead);
 router.get('/', authMiddleware, getAllLeads);
+router.get('/list', authMiddleware, getAllLeads1);
+
 router.get('/active-leads', authMiddleware, getAllLeadsActived);
 
 router.get('/:id', authMiddleware, getLeadById);

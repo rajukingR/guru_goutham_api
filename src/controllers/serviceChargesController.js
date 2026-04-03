@@ -1,5 +1,7 @@
 import db from '../models/index.js';
-
+import {
+  Op
+} from "sequelize";
 const ServiceCharges = db.ServiceCharges;
 const Contact = db.Contact;
 
@@ -23,26 +25,88 @@ export const createServiceCharges = async (req, res) => {
   }
 };
 
-// ✅ Get All Service Charges with Customer Details
 export const getAllServiceCharges = async (req, res) => {
   try {
-    const serviceCharges = await ServiceCharges.findAll({
-      order: [['id', 'DESC']],
+
+    //-----------------------------------
+    // PAGINATION
+    //-----------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //-----------------------------------
+    // GLOBAL SEARCH
+    //-----------------------------------
+
+    let whereCondition = {};
+
+    if (search) {
+
+      whereCondition = {
+        [Op.or]: [
+
+          // ServiceCharges fields
+          { service_number: { [Op.like]: `%${search}%` } },
+          { invoice_number: { [Op.like]: `%${search}%` } },
+
+          // 🔥 Customer fields (IMPORTANT)
+          { "$customer.first_name$": { [Op.like]: `%${search}%` } },
+          { "$customer.last_name$": { [Op.like]: `%${search}%` } },
+          { "$customer.phone_number$": { [Op.like]: `%${search}%` } },
+          { "$customer.email$": { [Op.like]: `%${search}%` } },
+          { "$customer.company_name$": { [Op.like]: `%${search}%` } },
+
+        ],
+      };
+    }
+
+    //-----------------------------------
+    // FETCH
+    //-----------------------------------
+
+    const { count, rows } = await ServiceCharges.findAndCountAll({
+
+      where: whereCondition,
+
       include: [
         {
           model: Contact,
-          as: 'customer',
-          attributes: { exclude: [] },
+          as: "customer",
+          required: false, // 🔥 MUST be false when using $association$
         },
       ],
+
+      order: [["id", "DESC"]],
+      limit,
+      offset,
+      distinct: true,
+      subQuery: false, // 🔥 VERY IMPORTANT when searching include
     });
 
-    res.status(200).json(serviceCharges);
+    //-----------------------------------
+
+    res.status(200).json({
+
+      serviceCharges: rows,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(count / limit),
+        totalRecords: count,
+        limit
+      }
+
+    });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({
-      message: 'Error fetching service charges',
-      error,
+      message: "Error fetching service charges",
+      error: error.message,
     });
   }
 };

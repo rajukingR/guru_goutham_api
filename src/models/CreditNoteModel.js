@@ -53,6 +53,17 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.DATEONLY,
       allowNull: true,
     },
+    credit_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: false,
+    },
+
+    is_count: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
+
     rental_end_date: DataTypes.DATE,
 
     customer_name: {

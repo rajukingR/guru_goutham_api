@@ -2,6 +2,7 @@ import express from 'express';
 import {
   createOrder,
   getAllOrders,
+  getAllOrders1,
   getOrderById,
   updateOrder,
   deleteOrder,
@@ -15,6 +16,8 @@ const router = express.Router();
 
 router.post('/create', authMiddleware, createOrder);
 router.get('/', authMiddleware, getAllOrders);
+router.get('/list', authMiddleware, getAllOrders1);
+
 router.get('/order-approved', authMiddleware, getAllOrdersApproved);
 router.get('/:id', authMiddleware, getOrderById);
 router.put('/:id', authMiddleware, updateOrder);

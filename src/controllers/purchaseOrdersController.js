@@ -1,5 +1,6 @@
 // controllers/purchaseOrdersController.js
 import db from '../models/index.js';
+import { Op } from "sequelize";
 
 const PurchaseOrder = db.PurchaseOrder;
 const Supplier = db.Supplier;
@@ -69,22 +70,69 @@ export const createPurchaseOrder = async (req, res) => {
 
 export const getAllPurchaseOrders = async (req, res) => {
   try {
-    const orders = await PurchaseOrder.findAll({
+
+    //-----------------------------------------
+    // PAGINATION PARAMS
+    //-----------------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //-----------------------------------------
+    // SEARCH CONDITION
+    //-----------------------------------------
+
+    const whereCondition = search
+      ? {
+          [Op.or]: [
+            { purchase_order_id: { [Op.like]: `%${search}%` } },
+            { purchase_quotation_id: { [Op.like]: `%${search}%` } },
+            { purchase_type: { [Op.like]: `%${search}%` } },
+            { po_status: { [Op.like]: `%${search}%` } },
+          ],
+        }
+      : {};
+
+    //-----------------------------------------
+
+    const { count, rows } = await PurchaseOrder.findAndCountAll({
+      where: whereCondition,
+
       include: [
         {
           model: Supplier,
-          as: 'supplier', // Association alias must match model setup
-          attributes: ['id', 'supplier_name'],
+          as: "supplier",
+          attributes: ["id", "supplier_name"],
         },
       ],
-            order: [['id', 'DESC']] // 👈 Sort by ID descending
 
+      order: [["id", "DESC"]],
+      limit,
+      offset,
+
+      distinct: true, // ⭐ Prevent duplicate counts
     });
 
-    res.status(200).json(orders);
+    //-----------------------------------------
+
+    res.status(200).json({
+      data: rows,
+      totalRecords: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+
   } catch (error) {
+
     console.error("Error fetching purchase orders:", error);
-    res.status(500).json({ message: 'Error fetching purchase orders', error });
+
+    res.status(500).json({
+      message: "Error fetching purchase orders",
+      error: error.message,
+    });
   }
 };
 

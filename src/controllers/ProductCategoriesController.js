@@ -1,4 +1,5 @@
 import db from "../models/index.js";
+import { Op } from "sequelize";
 
 const ProductCategory = db.ProductCategory;
 
@@ -32,21 +33,56 @@ export const createProductCategory = async (req, res) => {
   }
 };
 
-// Get all Product Categories
 export const getAllProductCategories = async (req, res) => {
   try {
-    const categories = await ProductCategory.findAll({
-      order: [
-        ['id', 'DESC']
-      ], // 👈 Sort by ID in descending order
 
+    //---------------------------------
+    // QUERY PARAMS
+    //---------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //---------------------------------
+    // SEARCH CONDITION
+    //---------------------------------
+
+    const whereCondition = search
+      ? {
+          [Op.or]: [
+            { category_name: { [Op.like]: `%${search}%` } },
+            { description: { [Op.like]: `%${search}%` } },
+          ],
+        }
+      : {};
+
+    //---------------------------------
+
+    const { count, rows } = await ProductCategory.findAndCountAll({
+      where: whereCondition,
+      order: [["id", "DESC"]],
+      limit,
+      offset,
     });
-    res.status(200).json(categories);
+
+    //---------------------------------
+
+    res.status(200).json({
+      data: rows,
+      totalRecords: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+
   } catch (error) {
     console.error("Error fetching product categories:", error);
+
     res.status(500).json({
       message: "Error fetching product categories",
-      error
+      error: error.message,
     });
   }
 };

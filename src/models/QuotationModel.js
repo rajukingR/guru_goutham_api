@@ -19,14 +19,15 @@ export default (sequelize, DataTypes) => {
     payment_type: {
       type: DataTypes.STRING,
     },
-     is_direct_invoice: {
+    is_direct_invoice: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
     },
     lead_id: {
       type: DataTypes.INTEGER,
-      allowNull: false
+      allowNull: true,
+      defaultValue: null
     },
     customer_id: {
       type: DataTypes.INTEGER,

@@ -91,6 +91,20 @@ export default (sequelize, DataTypes) => {
       defaultValue: false,
     },
 
+    // Processor Advanced
+    processor_core: {
+      type: DataTypes.STRING(100),
+    },
+
+    battery: {
+      type: DataTypes.STRING(100),
+    },
+
+    adapter: {
+      type: DataTypes.STRING(100),
+    },
+
+
     // Monitor-specific fields
     display_device: {
       type: DataTypes.STRING(100),

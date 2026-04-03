@@ -1,130 +1,130 @@
 ///// SERVER SIDE DATABASE BACKUP
 
 
-import path from 'path';
-import fs from 'fs';
-import mysql from 'mysql2';
-import xlsx from 'xlsx';
-import { exec } from 'child_process';
-import dotenv from 'dotenv';
-import nodemailer from 'nodemailer';
-import { fileURLToPath } from 'url';
+// import path from 'path';
+// import fs from 'fs';
+// import mysql from 'mysql2';
+// import xlsx from 'xlsx';
+// import { exec } from 'child_process';
+// import dotenv from 'dotenv';
+// import nodemailer from 'nodemailer';
+// import { fileURLToPath } from 'url';
 
-// Setup __dirname in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// // Setup __dirname in ESM
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
 
-dotenv.config();
+// dotenv.config();
 
-// Backup directory for .sql files
-const backupDir = '/var/www/guru-goutham/db_backups';
+// // Backup directory for .sql files
+// const backupDir = '/var/www/crm-360/db_backups';
 
-// Ensure SQL backup directory exists
-if (!fs.existsSync(backupDir)) {
-  fs.mkdirSync(backupDir, { recursive: true });
-}
+// // Ensure SQL backup directory exists
+// if (!fs.existsSync(backupDir)) {
+//   fs.mkdirSync(backupDir, { recursive: true });
+// }
 
-// Create timestamp string in desired format
-const getTimestamp = () => new Date().toISOString().replace(/[:.]/g, '-');
+// // Create timestamp string in desired format
+// const getTimestamp = () => new Date().toISOString().replace(/[:.]/g, '-');
 
-// Nodemailer transporter config
+// // Nodemailer transporter config
 
-const transporter = nodemailer.createTransport({
-  service: 'Gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// const transporter = nodemailer.createTransport({
+//   service: 'Gmail',
+//   auth: {
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS,
+//   },
+// });
 
-// MySQL connection config
-const connection = mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
+// // MySQL connection config
+// const connection = mysql.createConnection({
+//   host: process.env.DB_HOST,
+//   user: process.env.DB_USER,
+//   password: process.env.DB_PASSWORD,
+//   database: process.env.DB_NAME,
+// });
 
-// List of tables to export to Excel
-const tables = ['users'];
+// // List of tables to export to Excel
+// const tables = ['users'];
 
-// Create SQL database backup file
-const createBackup = () => {
-  const timestamp = getTimestamp();
-  const sqlFileName = `${process.env.DB_NAME}-backup-${timestamp}.sql`;
-  const sqlFilePath = path.join(backupDir, sqlFileName);
+// // Create SQL database backup file
+// const createBackup = () => {
+//   const timestamp = getTimestamp();
+//   const sqlFileName = `${process.env.DB_NAME}-backup-${timestamp}.sql`;
+//   const sqlFilePath = path.join(backupDir, sqlFileName);
 
-  const command = `mysqldump -h ${process.env.DB_HOST} -u ${process.env.DB_USER} \
---password=${process.env.DB_PASSWORD} ${process.env.DB_NAME} > "${sqlFilePath}"`;
+//   const command = `mysqldump -h ${process.env.DB_HOST} -u ${process.env.DB_USER} \
+// --password=${process.env.DB_PASSWORD} ${process.env.DB_NAME} > "${sqlFilePath}"`;
 
-  exec(command, (error, stdout, stderr) => {
-    if (error) {
-      console.error('❌ SQL Backup failed:', error.message);
-      if (stderr) console.error('MySQL Error:', stderr);
-      return;
-    }
+//   exec(command, (error, stdout, stderr) => {
+//     if (error) {
+//       console.error('❌ SQL Backup failed:', error.message);
+//       if (stderr) console.error('MySQL Error:', stderr);
+//       return;
+//     }
 
-    console.log(`✅ SQL Backup created: ${sqlFilePath}`);
-    convertSqlToExcelAndSend(timestamp);
-  });
-};
+//     console.log(`✅ SQL Backup created: ${sqlFilePath}`);
+//     convertSqlToExcelAndSend(timestamp);
+//   });
+// };
 
-// Convert selected table data to Excel (in memory) and send via email
-const convertSqlToExcelAndSend = (timestamp) => {
-  const wb = xlsx.utils.book_new();
-  let completedQueries = 0;
+// // Convert selected table data to Excel (in memory) and send via email
+// const convertSqlToExcelAndSend = (timestamp) => {
+//   const wb = xlsx.utils.book_new();
+//   let completedQueries = 0;
 
-  tables.forEach((table) => {
-    connection.query(`SELECT * FROM ${table}`, (err, results) => {
-      if (err) {
-        console.error(`❌ Error fetching data from ${table}:`, err.message);
-      } else {
-        const sheet = xlsx.utils.json_to_sheet(results);
-        xlsx.utils.book_append_sheet(wb, sheet, table);
-        console.log(`✅ Data from ${table} added to Excel`);
-      }
+//   tables.forEach((table) => {
+//     connection.query(`SELECT * FROM ${table}`, (err, results) => {
+//       if (err) {
+//         console.error(`❌ Error fetching data from ${table}:`, err.message);
+//       } else {
+//         const sheet = xlsx.utils.json_to_sheet(results);
+//         xlsx.utils.book_append_sheet(wb, sheet, table);
+//         console.log(`✅ Data from ${table} added to Excel`);
+//       }
 
-      completedQueries++;
+//       completedQueries++;
 
-      // After all queries complete
-      if (completedQueries === tables.length) {
-        // Write Excel file to buffer in memory
-        const excelBuffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
-        console.log(`✅ Excel file generated in memory`);
-        sendBackupEmail(excelBuffer, timestamp);
-      }
-    });
-  });
-};
+//       // After all queries complete
+//       if (completedQueries === tables.length) {
+//         // Write Excel file to buffer in memory
+//         const excelBuffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+//         console.log(`✅ Excel file generated in memory`);
+//         sendBackupEmail(excelBuffer, timestamp);
+//       }
+//     });
+//   });
+// };
 
-// Send Excel backup via email (from buffer)
-const sendBackupEmail = (excelBuffer, timestamp) => {
-  const excelFileName = `${process.env.DB_NAME}-backup-${timestamp}.xlsx`;
+// // Send Excel backup via email (from buffer)
+// const sendBackupEmail = (excelBuffer, timestamp) => {
+//   const excelFileName = `${process.env.DB_NAME}-backup-${timestamp}.xlsx`;
 
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: process.env.EMAIL_TO,
-    subject: '📦 Daily Database Backup (Excel)',
-    text: 'Attached is the latest database backup in Excel format.',
-    attachments: [
-      {
-        filename: excelFileName,
-        content: excelBuffer,
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      },
-    ],
-  };
+//   const mailOptions = {
+//     from: process.env.EMAIL_USER,
+//     to: process.env.EMAIL_TO,
+//     subject: '📦 Daily Database Backup (Excel)',
+//     text: 'Attached is the latest database backup in Excel format.',
+//     attachments: [
+//       {
+//         filename: excelFileName,
+//         content: excelBuffer,
+//         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+//       },
+//     ],
+//   };
 
-  transporter.sendMail(mailOptions, (err, info) => {
-    if (err) {
-      console.error('❌ Error sending backup email:', err.message);
-    } else {
-      console.log(`📧 Backup email sent successfully ✅`);
-    }
-  });
-};
+//   transporter.sendMail(mailOptions, (err, info) => {
+//     if (err) {
+//       console.error('❌ Error sending backup email:', err.message);
+//     } else {
+//       console.log(`📧 Backup email sent successfully ✅`);
+//     }
+//   });
+// };
 
-export default createBackup;
+// export default createBackup;
 
 
 
@@ -135,123 +135,124 @@ export default createBackup;
 //LOCALLY BACKUP
 
 
-// import path from "path";
-// import fs from "fs";
-// import mysql from "mysql2";
-// import xlsx from "xlsx";
-// import nodemailer from "nodemailer";
-// import dotenv from "dotenv";
-// import {
-//     exec
-// } from "child_process";
+import path from "path";
+import fs from "fs";
+import mysql from "mysql2";
+import xlsx from "xlsx";
+import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+import {
+  exec
+} from "child_process";
 
-// dotenv.config();
+dotenv.config();
 
-// // Absolute path for mysqldump executable
-// const mysqldumpPath = `"C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysqldump.exe"`;
+// Absolute path for mysqldump executable
+const mysqldumpPath = `"C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysqldump.exe"`;
 
-// // Absolute path for backup directory
-// const backupDir = path.join(path.resolve(), "src", "utils", "db_backups");
+// Absolute path for backup directory
+const backupDir = path.join(path.resolve(), "src", "utils", "db_backups");
 
-// // Ensure backup directory exists
-// if (!fs.existsSync(backupDir)) {
-//     fs.mkdirSync(backupDir, {
-//         recursive: true
-//     });
-// }
+// Ensure backup directory exists
+if (!fs.existsSync(backupDir)) {
+  fs.mkdirSync(backupDir, {
+    recursive: true
+  });
+}
 
-// // Configure Nodemailer transporter
-// const transporter = nodemailer.createTransport({
-//     service: "Gmail",
-//     auth: {
-//         user: process.env.EMAIL_USER,
-//         pass: process.env.EMAIL_PASS,
-//     },
-// });
+// Configure Nodemailer transporter
+const transporter = nodemailer.createTransport({
+  service: "Gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
-// // MySQL connection
-// const connection = mysql.createConnection({
-//     host: process.env.DB_HOST,
-//     user: process.env.DB_USER, // ✅ Correct
-//     password: process.env.DB_PASSWORD,
-//     database: process.env.DB_NAME,
-// });
+// MySQL connection
+const connection = mysql.createConnection({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER, // ✅ Correct
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+});
 
 
-// // Tables to include in backup
-// const tables = [
-//     "users"
-// ];
+// Tables to include in backup
+const tables = [
+  "goods_receipt_items",
 
-// // Send backup file via email
-// const sendBackupEmail = (filePath) => {
-//     const mailOptions = {
-//         from: process.env.EMAIL_USER,
-//         to: process.env.EMAIL_TO,
-//         subject: "📦 Daily Database Backup (Excel)",
-//         text: "Attached is the latest database backup in Excel format.",
-//         attachments: [{
-//             filename: path.basename(filePath),
-//             path: filePath,
-//         }, ],
-//     };
+];
 
-//     transporter.sendMail(mailOptions, (err) => {
-//         if (err) {
-//             console.error("❌ Error sending backup email:", err.message);
-//         } else {
-//             console.log("📧 Backup email sent successfully ✅");
-//         }
-//     });
-// };
+// Send backup file via email
+const sendBackupEmail = (filePath) => {
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: process.env.EMAIL_TO,
+    subject: "📦 Daily Database Backup (Excel)",
+    text: "Attached is the latest database backup in Excel format.",
+    attachments: [{
+      filename: path.basename(filePath),
+      path: filePath,
+    }, ],
+  };
 
-// // Convert SQL data from all tables to Excel
-// const convertSqlToExcel = () => {
-//     const wb = xlsx.utils.book_new();
+  transporter.sendMail(mailOptions, (err) => {
+    if (err) {
+      console.error("❌ Error sending backup email:", err.message);
+    } else {
+      console.log("📧 Backup email sent successfully ✅");
+    }
+  });
+};
 
-//     tables.forEach((table) => {
-//         const query = `SELECT * FROM ${table}`;
-//         connection.query(query, (err, results) => {
-//             if (err) {
-//                 console.error(`❌ Error querying ${table}:`, err.message);
-//                 return;
-//             }
-//             const sheet = xlsx.utils.json_to_sheet(results);
-//             xlsx.utils.book_append_sheet(wb, sheet, table);
-//             console.log(`✅ ${table} data added to Excel`);
-//         });
-//     });
+// Convert SQL data from all tables to Excel
+const convertSqlToExcel = () => {
+  const wb = xlsx.utils.book_new();
 
-//     setTimeout(() => {
-//         const excelFileName = `${process.env.DB_NAME}-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.xlsx`;
-//         const excelFilePath = path.join(backupDir, excelFileName);
+  tables.forEach((table) => {
+    const query = `SELECT * FROM ${table}`;
+    connection.query(query, (err, results) => {
+      if (err) {
+        console.error(`❌ Error querying ${table}:`, err.message);
+        return;
+      }
+      const sheet = xlsx.utils.json_to_sheet(results);
+      xlsx.utils.book_append_sheet(wb, sheet, table);
+      console.log(`✅ ${table} data added to Excel`);
+    });
+  });
 
-//         xlsx.writeFile(wb, excelFilePath);
-//         console.log(`✅ Excel file created: ${excelFilePath}`);
-//         sendBackupEmail(excelFilePath);
-//     }, 2000);
-// };
+  setTimeout(() => {
+    const excelFileName = `${process.env.DB_NAME}-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.xlsx`;
+    const excelFilePath = path.join(backupDir, excelFileName);
 
-// // Create database backup
-// const createBackup = () => {
-//     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-//     const fileName = `${process.env.DB_NAME}-backup-${timestamp}.sql`;
-//     const filePath = path.join(backupDir, fileName);
+    xlsx.writeFile(wb, excelFilePath);
+    console.log(`✅ Excel file created: ${excelFilePath}`);
+    sendBackupEmail(excelFilePath);
+  }, 2000);
+};
 
-//     const command = `${mysqldumpPath} -h ${process.env.DB_HOST} -u ${process.env.DB_USER} --password=${process.env.DB_PASSWORD} ${process.env.DB_NAME} > "${filePath}"`;
+// Create database backup
+const createBackup = () => {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const fileName = `${process.env.DB_NAME}-backup-${timestamp}.sql`;
+  const filePath = path.join(backupDir, fileName);
 
-//     exec(command, (error, stdout, stderr) => {
-//         if (error) {
-//             console.error("❌ Backup failed:", error.message);
-//             if (stderr) console.error("MySQL Error:", stderr);
-//             return;
-//         }
-//         console.log(`✅ SQL Backup created: ${filePath}`);
-//         convertSqlToExcel();
-//     });
-// };
+  const command = `${mysqldumpPath} -h ${process.env.DB_HOST} -u ${process.env.DB_USER} --password=${process.env.DB_PASSWORD} ${process.env.DB_NAME} > "${filePath}"`;
 
-// export default createBackup;
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      console.error("❌ Backup failed:", error.message);
+      if (stderr) console.error("MySQL Error:", stderr);
+      return;
+    }
+    console.log(`✅ SQL Backup created: ${filePath}`);
+    convertSqlToExcel();
+  });
+};
+
+export default createBackup;
 
 
 

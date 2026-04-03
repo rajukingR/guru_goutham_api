@@ -2,6 +2,7 @@ import express from 'express';
 import {
   createQuotation,
   getAllQuotations,
+  getAllQuotations1,
   getQuotationById,
   updateQuotation,
   deleteQuotation,
@@ -14,6 +15,8 @@ const router = express.Router();
 
 router.post('/create', authMiddleware, createQuotation);
 router.get('/', authMiddleware, getAllQuotations);
+router.get('/list', authMiddleware, getAllQuotations1);
+
 router.get('/approved', authMiddleware, getAllQuotationsApproved);
 router.get('/:id', authMiddleware, getQuotationById);
 router.put('/:id', authMiddleware, updateQuotation);

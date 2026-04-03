@@ -1,5 +1,6 @@
 import db from "../models/index.js";
 const Brand = db.Brand;
+import { Op } from "sequelize";
 
 // Create
 export const createBrand = async (req, res) => {
@@ -31,24 +32,55 @@ export const createBrand = async (req, res) => {
   }
 };
 
-// Read allRAJU
 export const getAllBrands = async (req, res) => {
   try {
-    const brands = await Brand.findAll({
-      order: [
-        ['id', 'DESC']
-      ], // 👈 Sort by ID in descending order
 
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //---------------------------------
+    // SEARCH CONDITION
+    //---------------------------------
+
+    const whereCondition = search
+      ? {
+          [Op.or]: [
+            { brand_name: { [Op.like]: `%${search}%` } },
+            { brand_number: { [Op.like]: `%${search}%` } },
+            { brand_description: { [Op.like]: `%${search}%` } },
+          ],
+        }
+      : {};
+
+    //---------------------------------
+
+    const { count, rows } = await Brand.findAndCountAll({
+      where: whereCondition,
+      order: [["id", "DESC"]],
+      limit,
+      offset,
     });
-    res.status(200).json(brands);
+
+    res.status(200).json({
+      data: rows,
+      totalRecords: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+
   } catch (error) {
     console.error("Error fetching brands:", error);
+
     res.status(500).json({
       message: "Error fetching brands",
-      error
+      error: error.message,
     });
   }
 };
+
 
 // Read active
 export const getActiveBrands = async (req, res) => {

@@ -15,9 +15,12 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+
+
     supplier_id: {
       type: DataTypes.INTEGER,
-      allowNull: false
+      allowNull: true,
+      defaultValue: null
     },
     purchase_order_status: {
       type: DataTypes.STRING,
@@ -54,9 +57,9 @@ export default (sequelize, DataTypes) => {
       as: 'selected_products'
     });
     GoodsReceipt.belongsTo(models.Supplier, {
-    foreignKey: 'supplier_id',
-    as: 'supplier',
-  });
+      foreignKey: 'supplier_id',
+      as: 'supplier',
+    });
   };
 
   return GoodsReceipt;

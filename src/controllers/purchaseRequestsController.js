@@ -1,4 +1,5 @@
 import db from '../models/index.js';
+import { Op } from "sequelize";
 
 const PurchaseRequest = db.PurchaseRequest;
 const Supplier = db.Supplier;
@@ -55,55 +56,109 @@ export const createPurchaseRequest = async (req, res) => {
 
 export const getAllPurchaseRequests = async (req, res) => {
   try {
-    const purchaseRequests = await PurchaseRequest.findAll({
+
+    //---------------------------------
+    // PAGINATION
+    //---------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //---------------------------------
+    // SEARCH CONDITION
+    //---------------------------------
+
+    const whereCondition = search
+      ? {
+          [Op.or]: [
+            { purchase_request_id: { [Op.like]: `%${search}%` } },
+            { purchase_type: { [Op.like]: `%${search}%` } },
+            { purchase_request_status: { [Op.like]: `%${search}%` } },
+          ],
+        }
+      : {};
+
+    //---------------------------------
+
+    const { count, rows } = await PurchaseRequest.findAndCountAll({
+      where: whereCondition,
+
       include: [
         {
           model: Supplier,
-          as: 'supplier',
-          attributes: ['supplier_name']
+          as: "supplier",
+          attributes: ["supplier_name"],
         },
         {
           model: PurchaseRequestItem,
-          as: 'items',
+          as: "items",
+          attributes: ["id", "quantity"],
           include: [
             {
               model: ProductTemplete,
-              as: 'product',
-              attributes: ['product_name', 'purchase_price']
-            }
-          ]
-        }
+              as: "product",
+              attributes: ["product_name", "purchase_price"],
+            },
+          ],
+        },
       ],
-      order: [['id', 'DESC']] // 👈 Sort by ID in descending order
+
+      order: [["id", "DESC"]],
+      limit,
+      offset,
+      distinct: true, // 🚨 VERY IMPORTANT when using include
     });
 
-    const formatted = purchaseRequests.map(request => {
+    //---------------------------------
+    // CALCULATE TOTAL ORDER VALUE
+    //---------------------------------
+
+    const formatted = rows.map((request) => {
+
       const requestJSON = request.toJSON();
       let totalValue = 0;
 
-      const itemsWithValue = (requestJSON.items || []).map(item => {
+      const itemsWithValue = (requestJSON.items || []).map((item) => {
+
         const qty = item.quantity || 0;
         const price = item.product?.purchase_price || 0;
+
         const itemTotal = qty * price;
         totalValue += itemTotal;
 
         return {
           ...item,
-          item_total_value: itemTotal
+          item_total_value: itemTotal,
         };
       });
 
       return {
         ...requestJSON,
         total_order_value: totalValue,
-        items: itemsWithValue
+        items: itemsWithValue,
       };
     });
 
-    res.status(200).json(formatted);
+    //---------------------------------
+
+    res.status(200).json({
+      data: formatted,
+      totalRecords: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+
   } catch (error) {
+
     console.error(error);
-    res.status(500).json({ message: 'Error fetching purchase requests', error });
+
+    res.status(500).json({
+      message: "Error fetching purchase requests",
+      error: error.message,
+    });
   }
 };
 

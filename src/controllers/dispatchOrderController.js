@@ -211,23 +211,60 @@ export const createDispatchOrder = async (req, res) => {
   }
 };
 
-// ✅ Get All Dispatch Orders (with items)
 export const getAllDispatchOrders = async (req, res) => {
   try {
-    const orders = await DispatchOrder.findAll({
-      include: [{
-        model: DispatchOrderItem,
-        as: "items"
-      }],
-      order: [
-        ["id", "DESC"]
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //------------------------------------
+    // SEARCH CONDITION
+    //------------------------------------
+
+    const whereCondition = search
+      ? {
+          [Op.or]: [
+            { dispatch_order_id: { [Op.like]: `%${search}%` } },
+            { shipping_name: { [Op.like]: `%${search}%` } },
+            { shipping_phone_number: { [Op.like]: `%${search}%` } },
+            { order_number: { [Op.like]: `%${search}%` } },
+            { city: { [Op.like]: `%${search}%` } },
+            { state: { [Op.like]: `%${search}%` } },
+          ],
+        }
+      : {};
+
+    //------------------------------------
+
+    const { count, rows } = await DispatchOrder.findAndCountAll({
+      where: whereCondition,
+
+      include: [
+        {
+          model: DispatchOrderItem,
+          as: "items",
+        },
       ],
+
+      order: [["id", "DESC"]],
+      limit,
+      offset,
     });
-    res.json(orders);
+
+    res.status(200).json({
+      data: rows,
+      totalRecords: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+
   } catch (err) {
     res.status(500).json({
-      message: "Failed to fetch orders",
-      error: err.message
+      message: "Failed to fetch dispatch orders",
+      error: err.message,
     });
   }
 };

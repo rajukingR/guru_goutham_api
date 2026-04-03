@@ -117,7 +117,43 @@ export const createAssembledAsset = async (req, res) => {
       });
     }
 
-    // Step 4: Create ProductTemplete
+    // Helper function to safely get nested properties
+    const safeGet = (obj, path, defaultValue = '') => {
+      if (!obj) return defaultValue;
+      const value = path.split('.').reduce((current, key) => current?.[key], obj);
+      return value !== undefined && value !== null ? String(value) : defaultValue;
+    };
+
+    // Handle RAM - it might be an array or object
+    let ramSize = '';
+    let ramType = '';
+    if (components?.ram) {
+      if (Array.isArray(components.ram) && components.ram.length > 0) {
+        ramSize = components.ram[0]?.size || '';
+        ramType = components.ram[0]?.type || '';
+      } else if (components.ram?.size) {
+        ramSize = components.ram.size || '';
+        ramType = components.ram.type || '';
+      }
+    }
+
+    // Handle Storage
+    let storageSize = '';
+    let diskType = '';
+    let ssdType = '';
+    if (components?.storage) {
+      if (Array.isArray(components.storage) && components.storage.length > 0) {
+        storageSize = components.storage[0]?.size || '';
+        diskType = components.storage[0]?.type || '';
+        ssdType = diskType === 'SSD' ? (components.storage[0]?.model || '') : '';
+      } else if (components.storage?.size) {
+        storageSize = components.storage.size || '';
+        diskType = components.storage.type || '';
+        ssdType = diskType === 'SSD' ? (components.storage.model || '') : '';
+      }
+    }
+
+    // Step 4: Create ProductTemplete with safe property access
     const productTempleteData = {
       product_category: "Assembled PC",
       product_id: generateRandomProductId(),
@@ -128,19 +164,19 @@ export const createAssembledAsset = async (req, res) => {
       brand: 'Default Brand',
       grade: 'Default Grade',
       model: assembled_name,
-      processor: components?.processor?.model || '',
-      ram: components?.ram?. [0]?.size || '',
-      ramType: components?.ram?. [0]?.type || '',
-      storage: components?.storage?. [0]?.size || '',
-      disk_type: components?.storage?. [0]?.type || '',
-      ssd_type: components?.storage?. [0]?.type === 'SSD' ? components.storage[0].model : '',
-      smps: components?.smps?.model || '',
-      cabinet: components?.cabinet.model || '',
-      motherboard: components?.motherboard.model || '',
-      capacity: components?.smps?.wattage || '',
-      wifi_standard: components?.wifi?.wifi_standard || '',
-      frequency_band: components?.wifi?.frequency_band || '',
-      graphics: components?.gpu?.model || '',
+      processor: safeGet(components, 'processor.model'),
+      ram: ramSize,
+      ramType: ramType,
+      storage: storageSize,
+      disk_type: diskType,
+      ssd_type: ssdType,
+      smps: safeGet(components, 'smps.model'),
+      cabinet: safeGet(components, 'cabinet.model'),
+      motherboard: safeGet(components, 'motherboard.model'),
+      capacity: safeGet(components, 'smps.wattage'),
+      wifi_standard: safeGet(components, 'wifi.wifi_standard'),
+      frequency_band: safeGet(components, 'wifi.frequency_band'),
+      graphics: safeGet(components, 'gpu.model'),
       os: components?.os || '',
       is_active: true,
       product_image: file?.filename || '',
@@ -171,25 +207,95 @@ export const createAssembledAsset = async (req, res) => {
 // Get all AssembledAssets
 export const getAllAssembledAssets = async (req, res) => {
   try {
+
+    //------------------------------------------------
+    // PAGINATION PARAMS
+    //------------------------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = (req.query.search || "").toLowerCase();
+
+    //------------------------------------------------
+    // FETCH DATA (YOUR ORIGINAL LOGIC)
+    //------------------------------------------------
+
     const assets = await AssembledAsset.findAll({
-      include: [{
-        model: AssembledComponent,
-        as: "components"
-      }],
-      order: [
-        ["id", "DESC"]
-      ]
+      include: [
+        {
+          model: AssembledComponent,
+          as: "components"
+        }
+      ],
+      order: [["id", "DESC"]],
     });
 
-    res.status(200).json(assets);
+    //------------------------------------------------
+    // SEARCH (ADDED ONLY)
+    //------------------------------------------------
+
+    let filteredAssets = assets;
+
+    if (search) {
+      filteredAssets = assets.filter(asset => {
+
+        const assembledName =
+          asset.assembled_name?.toLowerCase() || "";
+
+        const cabinetId =
+          asset.parent_asset_id?.toLowerCase() || "";
+
+        // search inside components
+        const componentMatch =
+          asset.components?.some(comp =>
+            comp.brand?.toLowerCase().includes(search) ||
+            comp.model?.toLowerCase().includes(search) ||
+            comp.component_type?.toLowerCase().includes(search) ||
+            comp.asset_id?.toLowerCase().includes(search)
+          );
+
+        return (
+          assembledName.includes(search) ||
+          cabinetId.includes(search) ||
+          componentMatch
+        );
+      });
+    }
+
+    //------------------------------------------------
+    // PAGINATION (ADDED ONLY)
+    //------------------------------------------------
+
+    const startIndex = (page - 1) * limit;
+    const paginatedAssets = filteredAssets.slice(
+      startIndex,
+      startIndex + limit
+    );
+
+    //------------------------------------------------
+
+    res.status(200).json({
+
+      assets: paginatedAssets,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(filteredAssets.length / limit),
+        totalRecords: filteredAssets.length,
+        limit
+      }
+
+    });
+
   } catch (error) {
     console.error("Fetch failed:", error);
     res.status(500).json({
       message: "Fetch failed",
-      error
+      error: error.message
     });
   }
 };
+
 
 // Get single AssembledAsset by ID
 export const getAssembledAssetById = async (req, res) => {

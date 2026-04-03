@@ -291,6 +291,7 @@ export const createAssetTransaction = async (req, res) => {
           credit_note_title: `Credit Note for Asset Removed - ${asset_id}`,
           industry: deliveryChallan.industry || "",
           transaction_type: "Asset Removed",
+          credit_date: new Date(),
           payment_type: deliveryChallan.payment_type,
           dispatch_order_number: deliveryChallan.dispatch_order_number,
           dispatch_order_id: deliveryChallan.dispatch_order_id,

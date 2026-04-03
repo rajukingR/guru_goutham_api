@@ -31,6 +31,7 @@ export const createQuotation = async (req, res) => {
       quotation_generated_by,
       status,
       customer_id,
+      contact_id,
       customer_first_name,
       customer_last_name,
       is_direct_invoice,
@@ -94,7 +95,7 @@ export const createQuotation = async (req, res) => {
       remarks,
       quotation_generated_by,
       status,
-      customer_id,
+      customer_id: contact_id,
       customer_first_name,
       customer_last_name,
       is_direct_invoice: is_direct_invoice ?? false,
@@ -144,9 +145,89 @@ export const createQuotation = async (req, res) => {
 
 
 
+// ✅ Get All Quotations WITH Pagination + Search
+export const getAllQuotations = async (req, res) => {
+  try {
+
+    //------------------------------------------------
+    // PAGINATION
+    //------------------------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //------------------------------------------------
+    // SEARCH CONDITION
+    //------------------------------------------------
+
+    let whereCondition = {};
+
+    if (search) {
+      whereCondition = {
+        [Op.or]: [
+          { quotation_id: { [Op.like]: `%${search}%` } },
+          { customer_first_name: { [Op.like]: `%${search}%` } },
+          { customer_last_name: { [Op.like]: `%${search}%` } },
+          { transaction_type: { [Op.like]: `%${search}%` } },
+          { payment_type: { [Op.like]: `%${search}%` } },
+        ],
+      };
+    }
+
+    //------------------------------------------------
+    // FETCH
+    //------------------------------------------------
+
+    const { count, rows } = await Quotation.findAndCountAll({
+
+      where: whereCondition,
+
+      include: [
+        {
+          model: QuotationItem,
+          as: 'items',
+        }
+      ],
+
+      order: [['created_at', 'DESC']],
+
+      limit,
+      offset,
+
+      distinct: true // ⭐ VERY IMPORTANT when using include
+    });
+
+    //------------------------------------------------
+
+    res.status(200).json({
+
+      quotations: rows,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(count / limit),
+        totalRecords: count,
+        limit
+      }
+
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: 'Error fetching quotations',
+      error: error.message
+    });
+  }
+};
+
+
 
 // Get all quotations
-export const getAllQuotations = async (req, res) => {
+export const getAllQuotations1 = async (req, res) => {
   try {
     const quotations = await Quotation.findAll({
       include: [{
@@ -167,9 +248,6 @@ export const getAllQuotations = async (req, res) => {
     });
   }
 };
-
-
-
 
 // Get all quotations
 // export const getAllQuotations = async (req, res) => {

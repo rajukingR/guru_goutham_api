@@ -58,8 +58,54 @@ export const createContact = async (req, res) => {
 };
 
 
-// Get all contacts
 export const getAllContacts = async (req, res) => {
+  try {
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    const whereCondition = search
+      ? {
+        [Op.or]: [
+          { first_name: { [Op.like]: `%${search}%` } },
+          { last_name: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { phone_number: { [Op.like]: `%${search}%` } },
+          { company_name: { [Op.like]: `%${search}%` } },
+        ],
+      }
+      : {};
+
+    const { count, rows } = await Contact.findAndCountAll({
+      where: whereCondition,
+      order: [["id", "DESC"]],
+      limit,
+      offset,
+    });
+
+    res.status(200).json({
+      data: rows,
+      totalRecords: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Error fetching contacts",
+      error,
+    });
+  }
+};
+
+
+
+// Get all contacts
+export const getAllContacts1 = async (req, res) => {
   try {
     const contacts = await Contact.findAll({
       order: [['id', 'DESC']], // 👈 Sort by ID in descending order
@@ -70,7 +116,6 @@ export const getAllContacts = async (req, res) => {
     res.status(500).json({ message: 'Error fetching contacts', error });
   }
 };
-
 
 
 // export const getAllContacts = async (req, res) => {
@@ -122,12 +167,30 @@ export const getAllContacts = async (req, res) => {
 
 export const getDeliveryChallansContact = async (req, res) => {
   try {
-    // Fetch distinct customer_code values from DeliveryChallan
+
+    //-----------------------------------
+    // PAGINATION
+    //-----------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //-----------------------------------
+    // GET DISTINCT CUSTOMER IDS
+    //-----------------------------------
+
     const challanCustomers = await DeliveryChallan.findAll({
       where: {
-        type: { [Op.ne]: 'Buy' },   // Exclude type 'Buy'
-        defualt_dc: false,          // Exclude where defualt_dc is true
-        peripheral_update: false    // Exclude where peripheral_update is true
+        dc_status: "Delivered",      // ✔ matches DB
+        defualt_dc: false,           // ✔ 0 in DB
+        peripheral_update: false,    // ✔ 0 in DB
+        [Op.or]: [
+          { type: { [Op.ne]: "Buy" } },
+          { type: null }             // ✔ include NULL values
+        ]
       },
       attributes: [
         [Sequelize.fn('DISTINCT', Sequelize.col('customer_code')), 'customer_code']
@@ -139,26 +202,122 @@ export const getDeliveryChallansContact = async (req, res) => {
       .map(item => item.customer_code)
       .filter(Boolean);
 
-    if (customerCodes.length === 0) {
+    if (!customerCodes.length) {
+      return res.status(200).json({
+        contacts: [],
+        pagination: {
+          currentPage: page,
+          totalPages: 0,
+          totalRecords: 0,
+          limit
+        }
+      });
+    }
+
+    //-----------------------------------
+    // SEARCH CONDITION
+    //-----------------------------------
+
+    let whereCondition = {
+      id: { [Op.in]: customerCodes }
+    };
+
+    if (search) {
+      whereCondition = {
+        ...whereCondition,
+        [Op.or]: [
+          { first_name: { [Op.like]: `%${search}%` } },
+          { last_name: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { phone_number: { [Op.like]: `%${search}%` } },
+          { company_name: { [Op.like]: `%${search}%` } },
+        ]
+      };
+    }
+
+    //-----------------------------------
+    // FETCH WITH COUNT
+    //-----------------------------------
+
+    const { count, rows } = await Contact.findAndCountAll({
+
+      where: whereCondition,
+      limit,
+      offset,
+      order: [["created_at", "DESC"]],
+      distinct: true
+    });
+
+    //-----------------------------------
+
+    res.status(200).json({
+
+      contacts: rows,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(count / limit),
+        totalRecords: count,
+        limit
+      }
+
+    });
+
+  } catch (error) {
+    console.error('Error in getDeliveryChallansContact:', error);
+    res.status(500).json({
+      message: 'Error fetching contacts',
+      error: error.message
+    });
+  }
+};
+
+
+
+
+export const getDeliveryChallansContact1 = async (req, res) => {
+  try {
+
+    const challanCustomers = await DeliveryChallan.findAll({
+      where: {
+        dc_status: "Delivered",      // ✔ matches DB
+        defualt_dc: false,           // ✔ 0 in DB
+        peripheral_update: false,    // ✔ 0 in DB
+        [Op.or]: [
+          { type: { [Op.ne]: "Buy" } },
+          { type: null }             // ✔ include NULL values
+        ]
+      },
+      attributes: [
+        [Sequelize.fn('DISTINCT', Sequelize.col('customer_code')), 'customer_code']
+      ],
+      raw: true
+    });
+
+    const customerCodes = challanCustomers
+      .map(item => item.customer_code)
+      .filter(Boolean);
+
+    if (!customerCodes.length) {
       return res.status(200).json([]);
     }
 
-    // Fetch matching contact details
     const contacts = await Contact.findAll({
       where: {
-        id: {
-          [Op.in]: customerCodes
-        }
+        id: { [Op.in]: customerCodes }
       }
     });
 
     res.status(200).json(contacts);
+
   } catch (error) {
     console.error('Error in getDeliveryChallansContact:', error);
-    res.status(500).json({ message: 'Error fetching contacts', error });
+    res.status(500).json({
+      message: 'Error fetching contacts',
+      error
+    });
   }
 };
-
 
 
 // Get all clients where status is 'Active' (and optionally is_active = 1)

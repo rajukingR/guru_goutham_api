@@ -22,6 +22,7 @@ export const createCreditNote = async (req, res) => {
     const {
       items,
       returned_date,
+      credit_date,
       rental_end_date,
       credit_note_number,
       credit_note_title,
@@ -46,7 +47,8 @@ export const createCreditNote = async (req, res) => {
       print_credit_note,
       collected_person_name,
       collected_person_no,
-      vehicle_no
+      vehicle_no,
+      is_count
     } = req.body;
 
     const creditNote = await CreditNote.create({
@@ -68,13 +70,15 @@ export const createCreditNote = async (req, res) => {
       amount,
       reference,
       returned_date,
+      credit_date,
       rental_end_date,
       created_by,
       status,
       print_credit_note: !!print_credit_note,
       collected_person_name,
       collected_person_no,
-      vehicle_no
+      vehicle_no,
+      is_count
     }, {
       transaction: t
     });
@@ -111,10 +115,45 @@ export const createCreditNote = async (req, res) => {
 
 
 
-// Get all credit notes in descending order
 export const getAllCreditNotes = async (req, res) => {
   try {
-    const notes = await CreditNote.findAll({
+
+    //-----------------------------------
+    // PAGINATION
+    //-----------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //-----------------------------------
+    // SEARCH
+    //-----------------------------------
+
+    let whereCondition = {};
+
+    if (search) {
+      whereCondition = {
+        [Op.or]: [
+          { dispatch_order_number: { [Op.like]: `%${search}%` } },
+          { customer_name: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { transaction_type: { [Op.like]: `%${search}%` } },
+          { payment_type: { [Op.like]: `%${search}%` } },
+        ],
+      };
+    }
+
+    //-----------------------------------
+    // FETCH
+    //-----------------------------------
+
+    const { count, rows } = await CreditNote.findAndCountAll({
+
+      where: whereCondition,
+
       include: [
         {
           model: CreditNoteItem,
@@ -122,7 +161,7 @@ export const getAllCreditNotes = async (req, res) => {
         },
         {
           model: Invoice,
-          as: "invoice", // make sure you defined this association
+          as: "invoice",
           required: false,
           where: {
             dispatch_order_id: Sequelize.col("CreditNote.dispatch_order_id"),
@@ -131,17 +170,37 @@ export const getAllCreditNotes = async (req, res) => {
                 SELECT MIN(inv.invoice_start_date)
                 FROM invoices AS inv
                 WHERE inv.dispatch_order_id = CreditNote.dispatch_order_id
-              )`),
-            },
+              )`)
+            }
           },
           attributes: ["id", "dispatch_order_id", "invoice_start_date"],
         },
       ],
+
       order: [["createdAt", "DESC"]],
+      limit,
+      offset,
+      distinct: true,
+      subQuery: false,
     });
 
-    res.status(200).json(notes);
+    //-----------------------------------
+
+    res.status(200).json({
+
+      creditNotes: rows,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(count / limit),
+        totalRecords: count,
+        limit
+      }
+
+    });
+
   } catch (error) {
+
     res.status(500).json({
       error: "Failed to fetch credit notes",
       details: error.message,
@@ -238,6 +297,8 @@ export const updateCreditNote = async (req, res) => {
     const {
       items,
       returned_date,
+      credit_date,
+      is_count,
       rental_end_date,
 
       credit_note_number,
@@ -314,6 +375,8 @@ export const updateCreditNote = async (req, res) => {
       amount,
       reference,
       returned_date,
+      credit_date,
+      is_count,
       rental_end_date,
       collected_person_name,
       collected_person_no,

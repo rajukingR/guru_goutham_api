@@ -1,4 +1,5 @@
 import db from '../models/index.js';
+import { Op } from "sequelize";
 
 const CourierCharges = db.CourierCharges;
 const Contact = db.Contact;
@@ -23,26 +24,88 @@ export const createCourierCharges = async (req, res) => {
   }
 };
 
-// ✅ Get All Courier Charges with Customer Details
 export const getAllCourierCharges = async (req, res) => {
   try {
-    const courierCharges = await CourierCharges.findAll({
-      order: [['id', 'DESC']],
+
+    //-----------------------------------
+    // PAGINATION
+    //-----------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //-----------------------------------
+    // GLOBAL SEARCH
+    //-----------------------------------
+
+    let whereCondition = {};
+
+    if (search) {
+      whereCondition = {
+        [Op.or]: [
+
+          // Courier fields
+          { service_number: { [Op.like]: `%${search}%` } },
+          { invoice_number: { [Op.like]: `%${search}%` } },
+
+          // 🔥 Customer fields (MOST IMPORTANT)
+          { "$customer.first_name$": { [Op.like]: `%${search}%` } },
+          { "$customer.last_name$": { [Op.like]: `%${search}%` } },
+          { "$customer.phone_number$": { [Op.like]: `%${search}%` } },
+          { "$customer.email$": { [Op.like]: `%${search}%` } },
+          { "$customer.company_name$": { [Op.like]: `%${search}%` } },
+
+        ],
+      };
+    }
+
+    //-----------------------------------
+    // FETCH
+    //-----------------------------------
+
+    const { count, rows } = await CourierCharges.findAndCountAll({
+
+      where: whereCondition,
+
       include: [
         {
           model: Contact,
-          as: 'customer',
-          attributes: { exclude: [] },
+          as: "customer",
+          required: false, // 🔥 MUST BE FALSE
         },
       ],
+
+      order: [["id", "DESC"]],
+      limit,
+      offset,
+
+      distinct: true,   // 🔥 prevents duplicate count
+      subQuery: false,  // 🔥 VERY IMPORTANT when using include
     });
 
-    res.status(200).json(courierCharges);
+    //-----------------------------------
+
+    res.status(200).json({
+
+      courierCharges: rows,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(count / limit),
+        totalRecords: count,
+        limit
+      }
+
+    });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({
-      message: 'Error fetching courier charges',
-      error,
+      message: "Error fetching courier charges",
+      error: error.message,
     });
   }
 };

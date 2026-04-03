@@ -47,8 +47,67 @@ export const createProduct = async (req, res) => {
   }
 };
 
-// Get all products
 export const getAllProducts = async (req, res) => {
+  try {
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //----------------------------------
+    // SEARCH CONDITION
+    //----------------------------------
+
+    const whereCondition = {
+      brand: {
+        [Op.ne]: "Default Brand", // remove default products
+      },
+
+      ...(search && {
+        [Op.or]: [
+          { product_name: { [Op.like]: `%${search}%` } },
+          { product_id: { [Op.like]: `%${search}%` } },
+          { brand: { [Op.like]: `%${search}%` } },
+          { model: { [Op.like]: `%${search}%` } },
+          { product_category: { [Op.like]: `%${search}%` } },
+        ],
+      }),
+    };
+
+    //----------------------------------
+
+    const { count, rows } = await ProductTemplete.findAndCountAll({
+      where: whereCondition,
+      order: [["id", "DESC"]],
+      limit,
+      offset,
+    });
+
+    res.status(200).json({
+      data: rows,
+      totalRecords: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Error fetching products",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
+
+// Get all products
+export const getAllProducts1 = async (req, res) => {
   try {
     const products = await ProductTemplete.findAll({
       order: [
@@ -66,26 +125,105 @@ export const getAllProducts = async (req, res) => {
 };
 
 
-
-
 export const getAllProductsWithoutActive = async (req, res) => {
   try {
     const products = await ProductTemplete.findAll({
-  where: {
-    [Op.or]: [
-      { is_deleted: false },
-      { is_active: true }
-    ]
-  },
-  order: [['id', 'DESC']],
-});
+      where: {
+        [Op.or]: [
+          { is_deleted: false },
+          { is_active: true }
+        ]
+      },
+      order: [['id', 'DESC']],
+    });
 
-    res.status(200).json(products);
+    const areSameAssembledSpecs = (product1, product2) => {
+      if (!product1 || !product2) return false;
+      
+      if (product1.product_category !== 'Assembled PC' || product2.product_category !== 'Assembled PC') {
+        return false;
+      }
+
+      const specsToCompare = [
+        'ram', 'disk_type', 'processor', 'storage', 'graphics', 
+        'cabinet', 'motherboard', 'smps', 'ramType', 
+        'processor_model', 'processor_speed', 'generation', 
+        'ram_speed', 'ram_slots', 'capacity', 'ssd_type',
+        'brand', 'grade', 'model'
+      ];
+      
+      for (const spec of specsToCompare) {
+        if (product1[spec] !== product2[spec]) return false;
+      }
+      
+      return true;
+    };
+
+    // Group and merge Assembled PC products
+    const assembledPCs = [];
+    const otherProducts = [];
+
+    for (const product of products) {
+      const productData = product.toJSON ? product.toJSON() : product;
+      
+      if (productData.product_category === 'Assembled PC') {
+        assembledPCs.push(productData);
+      } else {
+        otherProducts.push(productData);
+      }
+    }
+
+    // Merge Assembled PCs with same specs
+    const mergedAssembledPCs = [];
+    const processedIndices = new Set();
+
+    for (let i = 0; i < assembledPCs.length; i++) {
+      if (processedIndices.has(i)) continue;
+
+      const currentProduct = assembledPCs[i];
+      const sameSpecProducts = [currentProduct];
+      
+      for (let j = i + 1; j < assembledPCs.length; j++) {
+        if (processedIndices.has(j)) continue;
+        
+        if (areSameAssembledSpecs(currentProduct, assembledPCs[j])) {
+          sameSpecProducts.push(assembledPCs[j]);
+          processedIndices.add(j);
+        }
+      }
+      
+      if (sameSpecProducts.length > 1) {
+        const mergedProduct = { ...currentProduct };
+        
+        // Collect all IDs
+        const allIds = sameSpecProducts.map(p => p.id);
+        const allProductIds = sameSpecProducts.map(p => p.product_id);
+        
+        mergedProduct.id = allIds[0];
+        mergedProduct.product_id = allProductIds[0];
+        mergedProduct.merged_from_ids = allIds;
+        mergedProduct.merged_from_product_ids = allProductIds;
+        mergedProduct.total_merged_count = sameSpecProducts.length;
+        mergedProduct.is_merged = true;
+        
+        mergedAssembledPCs.push(mergedProduct);
+        processedIndices.add(i);
+      } else {
+        mergedAssembledPCs.push(currentProduct);
+        processedIndices.add(i);
+      }
+    }
+
+    // Combine and sort
+    let finalProducts = [...mergedAssembledPCs, ...otherProducts];
+    finalProducts.sort((a, b) => b.id - a.id);
+
+    res.status(200).json(finalProducts);
   } catch (error) {
     console.error(error);
     res.status(500).json({
       message: 'Error fetching products',
-      error
+      error: error.message || error
     });
   }
 };

@@ -1,11 +1,11 @@
 import db from '../models/index.js';
+import { Op } from "sequelize";
 
 const Supplier = db.Supplier;
-const SupplierAddress = db.SupplierAddress;
-const BankDetail = db.BankDetail;
-const SupplierContact = db.SupplierContact;
 
-// Create supplier with address, bank, and contacts
+/**
+ * CREATE SUPPLIER
+ */
 export const createSupplier = async (req, res) => {
   try {
     const {
@@ -27,54 +27,103 @@ export const createSupplier = async (req, res) => {
       gst_number,
       introduced_by,
       description,
-      address,
-      bank,
-      contacts
-    }, {
-      include: [
-        { model: SupplierAddress, as: 'address' },
-        { model: BankDetail, as: 'bank' },
-        { model: SupplierContact, as: 'contacts' }
-      ]
+      address,   // ✅ JSON
+      bank,      // ✅ JSON
+      contacts   // ✅ JSON
     });
 
-    res.status(201).json({ message: 'Supplier created successfully', supplier });
+    res.status(201).json({
+      message: 'Supplier created successfully',
+      supplier
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error creating supplier', error });
+    res.status(500).json({
+      message: 'Error creating supplier',
+      error
+    });
   }
 };
 
-// Get all suppliers with their details
+/**
+ * GET ALL SUPPLIERS
+ */
 export const getAllSuppliers = async (req, res) => {
   try {
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //----------------------------------------
+
+    const whereCondition = search
+      ? {
+          [Op.or]: [
+            { supplier_name: { [Op.like]: `%${search}%` } },
+            { supplier_code: { [Op.like]: `%${search}%` } },
+            { gst_number: { [Op.like]: `%${search}%` } },
+          ],
+        }
+      : {};
+
+    //----------------------------------------
+
+    const { count, rows } = await Supplier.findAndCountAll({
+      where: whereCondition,
+      order: [["id", "DESC"]],
+      limit,
+      offset,
+    });
+
+    //----------------------------------------
+
+    res.status(200).json({
+      data: rows,
+      totalRecords: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      message: "Error fetching suppliers",
+      error: error.message,
+    });
+  }
+};
+
+
+
+export const getAllSuppliers1 = async (req, res) => {
+  try {
     const suppliers = await Supplier.findAll({
-      include: [
-        { model: SupplierAddress, as: 'address' },
-        { model: BankDetail, as: 'bank' },
-        { model: SupplierContact, as: 'contacts' }
-      ]
+      order: [['id', 'DESC']]
     });
 
     res.status(200).json(suppliers);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error fetching suppliers', error });
+    res.status(500).json({
+      message: 'Error fetching suppliers',
+      error
+    });
   }
 };
 
-// Get single supplier by ID
+/**
+ * GET SUPPLIER BY ID
+ */
 export const getSupplierById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const supplier = await Supplier.findByPk(id, {
-      include: [
-        { model: SupplierAddress, as: 'address' },
-        { model: BankDetail, as: 'bank' },
-        { model: SupplierContact, as: 'contacts' }
-      ]
-    });
+    const supplier = await Supplier.findByPk(id);
 
     if (!supplier) {
       return res.status(404).json({ message: 'Supplier not found' });
@@ -83,30 +132,27 @@ export const getSupplierById = async (req, res) => {
     res.status(200).json(supplier);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error fetching supplier', error });
+    res.status(500).json({
+      message: 'Error fetching supplier',
+      error
+    });
   }
 };
 
-// Update supplier by ID
+/**
+ * UPDATE SUPPLIER
+ */
 export const updateSupplier = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const supplier = await Supplier.findByPk(id, {
-      include: [
-        { model: SupplierAddress, as: 'address' },
-        { model: BankDetail, as: 'bank' },
-        { model: SupplierContact, as: 'contacts' }
-      ]
-    });
-
+    const supplier = await Supplier.findByPk(id);
     if (!supplier) {
       return res.status(404).json({ message: 'Supplier not found' });
     }
 
     const {
       supplier_code,
-      registration_date,
       supplier_name,
       supplier_owner,
       gst_number,
@@ -119,47 +165,32 @@ export const updateSupplier = async (req, res) => {
 
     await supplier.update({
       supplier_code,
-      registration_date,
       supplier_name,
       supplier_owner,
       gst_number,
       introduced_by,
-      description
+      description,
+      address,   // ✅ JSON replaced
+      bank,      // ✅ JSON replaced
+      contacts   // ✅ JSON replaced
     });
 
-    // Update or create address
-    if (address) {
-      if (supplier.address) {
-        await supplier.address.update(address);
-      } else {
-        await SupplierAddress.create({ ...address, supplier_id: supplier.id });
-      }
-    }
-
-    // Update or create bank
-    if (bank) {
-      if (supplier.bank) {
-        await supplier.bank.update(bank);
-      } else {
-        await BankDetail.create({ ...bank, supplier_id: supplier.id });
-      }
-    }
-
-    // Replace old contacts with new ones
-    if (contacts) {
-      await SupplierContact.destroy({ where: { supplier_id: supplier.id } });
-      const newContacts = contacts.map(c => ({ ...c, supplier_id: supplier.id }));
-      await SupplierContact.bulkCreate(newContacts);
-    }
-
-    res.status(200).json({ message: 'Supplier updated successfully', supplier });
+    res.status(200).json({
+      message: 'Supplier updated successfully',
+      supplier
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error updating supplier', error });
+    res.status(500).json({
+      message: 'Error updating supplier',
+      error
+    });
   }
 };
 
-// Delete supplier
+/**
+ * DELETE SUPPLIER
+ */
 export const deleteSupplier = async (req, res) => {
   try {
     const { id } = req.params;
@@ -169,14 +200,16 @@ export const deleteSupplier = async (req, res) => {
       return res.status(404).json({ message: 'Supplier not found' });
     }
 
-    await SupplierAddress.destroy({ where: { supplier_id: id } });
-    await BankDetail.destroy({ where: { supplier_id: id } });
-    await SupplierContact.destroy({ where: { supplier_id: id } });
     await supplier.destroy();
 
-    res.status(200).json({ message: 'Supplier deleted successfully' });
+    res.status(200).json({
+      message: 'Supplier deleted successfully'
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error deleting supplier', error });
+    res.status(500).json({
+      message: 'Error deleting supplier',
+      error
+    });
   }
 };

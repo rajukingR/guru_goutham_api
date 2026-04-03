@@ -72,8 +72,106 @@ export const createLead = async (req, res) => {
 
 
 
-// Get all Leads
+// Get all Leads WITH Pagination + Search
 export const getAllLeads = async (req, res) => {
+  try {
+
+    //------------------------------------------------
+    // PAGINATION
+    //------------------------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //------------------------------------------------
+    // SEARCH CONDITION
+    //------------------------------------------------
+
+    let whereCondition = {};
+
+    if (search) {
+      whereCondition = {
+        [Op.or]: [
+          { lead_id: { [Op.like]: `%${search}%` } },
+          { transaction_type: { [Op.like]: `%${search}%` } },
+        ],
+      };
+    }
+
+    //------------------------------------------------
+    // FETCH DATA
+    //------------------------------------------------
+
+    const { count, rows } = await Lead.findAndCountAll({
+
+      where: whereCondition,
+
+      include: [
+        {
+          model: Contact,
+          as: 'contact',
+          where: search
+            ? {
+                [Op.or]: [
+                  { first_name: { [Op.like]: `%${search}%` } },
+                  { last_name: { [Op.like]: `%${search}%` } },
+                  { phone_number: { [Op.like]: `%${search}%` } },
+                  { company_name: { [Op.like]: `%${search}%` } },
+                ],
+              }
+            : undefined,
+          required: false, // ⭐ VERY IMPORTANT
+        },
+        {
+          model: LeadProduct,
+          as: 'lead_products',
+          include: [
+            {
+              model: ProductTemplete,
+              as: 'product'
+            }
+          ]
+        }
+      ],
+
+      order: [['created_at', 'DESC']],
+      limit,
+      offset,
+      distinct: true // ⭐ prevents wrong count when using include
+    });
+
+    //------------------------------------------------
+
+    res.status(200).json({
+
+      leads: rows,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(count / limit),
+        totalRecords: count,
+        limit,
+      },
+
+    });
+
+  } catch (error) {
+    console.error("Error fetching leads:", error);
+    res.status(500).json({
+      message: "Error fetching leads",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+// Get all Leads
+export const getAllLeads1 = async (req, res) => {
   try {
     const leads = await Lead.findAll({
       include: [
@@ -104,8 +202,6 @@ export const getAllLeads = async (req, res) => {
     });
   }
 };
-
-
 
 
 

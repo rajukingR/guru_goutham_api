@@ -1,4 +1,5 @@
 import db from '../models/index.js';
+import { Op } from "sequelize";
 
 const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
@@ -246,8 +247,72 @@ export const getAssetSwapById = async (req, res) => {
   }
 };
 
-// ✅ Get All Asset Swaps
 export const getAllAssetSwaps = async (req, res) => {
+  try {
+
+    //------------------------------------------------
+    // PAGINATION
+    //------------------------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //------------------------------------------------
+    // SEARCH CONDITION
+    //------------------------------------------------
+
+    let whereCondition = {};
+
+    if (search) {
+      whereCondition = {
+        [Op.or]: [
+          { asset_id: { [Op.like]: `%${search}%` } },
+          { product_name: { [Op.like]: `%${search}%` } },
+          { reason: { [Op.like]: `%${search}%` } },
+        ],
+      };
+    }
+
+    //------------------------------------------------
+    // FETCH DATA
+    //------------------------------------------------
+
+    const { count, rows } = await AssetSwap.findAndCountAll({
+      where: whereCondition,
+      order: [['id', 'DESC']],
+      offset,
+      limit,
+    });
+
+    //------------------------------------------------
+
+    res.status(200).json({
+      assetSwaps: rows,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(count / limit),
+        totalRecords: count,
+        limit,
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ Error fetching asset swaps:", error);
+    res.status(500).json({
+      message: "Error fetching asset swaps",
+      error: error.message,
+    });
+  }
+};
+
+
+
+// ✅ Get All Asset Swaps
+export const getAllAssetSwaps1 = async (req, res) => {
   try {
     const assetSwaps = await AssetSwap.findAll({
       order: [

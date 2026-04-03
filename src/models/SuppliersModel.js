@@ -1,47 +1,90 @@
 export default (sequelize, DataTypes) => {
-  const Supplier = sequelize.define('Supplier', {
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true,
-    },
-    supplier_code: {
-      type: DataTypes.STRING,
-    },
-    registration_date: {
-      type: DataTypes.DATEONLY,
-    },
-    supplier_name: {
-      type: DataTypes.STRING,
-    },
-    supplier_owner: {
-      type: DataTypes.STRING,
-    },
-    gst_number: {
-      type: DataTypes.STRING,
-    },
-    introduced_by: {
-      type: DataTypes.STRING,
-    },
-    description: {
-      type: DataTypes.TEXT,
-    },
-  }, {
-    tableName: 'suppliers',
-    timestamps: false,
-  });
+  const Supplier = sequelize.define(
+    'Supplier',
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+
+      supplier_code: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
+      },
 
 
-   Supplier.associate = models => {
-    Supplier.hasOne(models.SupplierAddress, { foreignKey: 'supplier_id', as: 'address' });
-    Supplier.hasOne(models.BankDetail, { foreignKey: 'supplier_id', as: 'bank' });
-    Supplier.hasMany(models.SupplierContact, { foreignKey: 'supplier_id', as: 'contacts' });
-   Supplier.hasMany(models.PurchaseQuotation, {
-    foreignKey: 'supplier_id',
-    as: 'quotations',
-  });
+      supplier_name: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+      },
+
+      supplier_owner: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+
+      gst_number: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
+
+      introduced_by: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+
+      description: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+
+      // ✅ JSON COLUMNS
+      address: {
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
+
+      bank: {
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
+
+      contacts: {
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
+
+      // ✅ TIMESTAMPS
+      created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
+
+      updated_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
+    },
+    {
+      tableName: 'suppliers',
+
+      // ✅ Enable timestamps with custom column names
+      timestamps: true,
+      createdAt: 'created_at',
+      updatedAt: 'updated_at',
+    }
+  );
+
+  // ✅ ASSOCIATION
+  Supplier.associate = models => {
+    Supplier.hasMany(models.PurchaseQuotation, {
+      foreignKey: 'supplier_id',
+      as: 'quotations',
+    });
   };
 
-  
   return Supplier;
 };

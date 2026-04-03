@@ -1,4 +1,5 @@
 import db from '../models/index.js';
+import { Op } from "sequelize";
 
 const {
   Order,
@@ -86,10 +87,8 @@ const {
 //   };
 // };
 
-// ✅ Helper: Validate stock from approved goods receipts
-// ✅ Helper: Validate stock from approved goods receipts
-
 const validateStockForApprovedOrder = async (items = []) => {
+  // Get all approved goods receipts
   const approvedReceipts = await GoodsReceipt.findAll({
     where: {
       goods_receipt_status: 'Approved'
@@ -108,6 +107,7 @@ const validateStockForApprovedOrder = async (items = []) => {
     };
   }
 
+  // Get all receipt items from approved receipts
   const receiptItems = await GoodsReceiptItem.findAll({
     where: {
       goods_receipt_id: approvedReceiptIds
@@ -115,6 +115,7 @@ const validateStockForApprovedOrder = async (items = []) => {
     attributes: ['product_id', 'quantity'],
   });
 
+  // Build stock map for regular products
   const stockMap = {};
   receiptItems.forEach(item => {
     stockMap[item.product_id] = (stockMap[item.product_id] || 0) + item.quantity;
@@ -123,32 +124,69 @@ const validateStockForApprovedOrder = async (items = []) => {
   const errors = [];
 
   for (const item of items) {
-    let finalProductIdToCheck = item.product_id;
-
-    // ✅ Fetch product details
+    // Fetch product details
     const productTemplete = await ProductTemplete.findOne({
       where: {
         id: item.product_id
       },
-      attributes: ['id', 'product_category']
+      attributes: ['id', 'product_category', 'assembled_id']
     });
 
-    // ✅ Only map to 1 if product_category is "Assembled PC"
-    if (productTemplete?.product_category?.toUpperCase() === "ASSEMBLED PC") {
-      finalProductIdToCheck = 1;
-    }
-
-    const availableQty = stockMap[finalProductIdToCheck] || 0;
-    const requestedQty = item.requested_quantity || 0;
-
-    if (requestedQty > availableQty) {
-      errors.push({
-        product_id: item.product_id,
-        product_name: item.product_name || 'Unknown',
-        available_quantity: availableQty,
-        requested_quantity: requestedQty,
-        message: `Insufficient stock for ${item.product_name || 'Unknown'}. Available QTY: ${availableQty}, Requested QTY: ${requestedQty}.`
+    // Handle Assembled PC products
+    if (productTemplete?.product_category === "Assembled PC" && productTemplete?.assembled_id) {
+      // Get all components for this assembled PC
+      const components = await AssembledComponent.findAll({
+        where: {
+          assembled_id: productTemplete.assembled_id
+        },
+        attributes: ['product_id', 'component_type']
       });
+
+      // Check stock for each component
+      let hasInsufficientStock = false;
+      let insufficientComponents = [];
+
+      for (const component of components) {
+        if (component.product_id) {
+          const availableQty = stockMap[component.product_id] || 0;
+          const requestedQty = item.requested_quantity || 0;
+
+          if (requestedQty > availableQty) {
+            hasInsufficientStock = true;
+            insufficientComponents.push({
+              component_type: component.component_type,
+              product_id: component.product_id,
+              available_quantity: availableQty,
+              requested_quantity: requestedQty
+            });
+          }
+        }
+      }
+
+      if (hasInsufficientStock) {
+        errors.push({
+          product_id: item.product_id,
+          product_name: item.product_name || 'Assembled PC',
+          available_quantity: 'Varies by component',
+          requested_quantity: item.requested_quantity,
+          insufficient_components: insufficientComponents,
+          message: `Insufficient stock for Assembled PC "${item.product_name}". Missing components: ${insufficientComponents.map(c => `${c.component_type} (Need: ${c.requested_quantity}, Available: ${c.available_quantity})`).join(', ')}`
+        });
+      }
+    } else {
+      // Regular product validation
+      const availableQty = stockMap[productTemplete?.id] || 0;
+      const requestedQty = item.requested_quantity || 0;
+
+      if (requestedQty > availableQty) {
+        errors.push({
+          product_id: item.product_id,
+          product_name: item.product_name || 'Unknown',
+          available_quantity: availableQty,
+          requested_quantity: requestedQty,
+          message: `Insufficient stock for ${item.product_name || 'Unknown'}. Available QTY: ${availableQty}, Requested QTY: ${requestedQty}.`
+        });
+      }
     }
   }
 
@@ -161,7 +199,6 @@ const validateStockForApprovedOrder = async (items = []) => {
       error: false
     };
 };
-
 
 
 // ✅ Create Order
@@ -400,9 +437,192 @@ export const updateOrder = async (req, res) => {
 };
 
 
+// ✅ Get All Orders WITH Pagination + Search
+export const getAllOrders = async (req, res) => {
+  try {
+
+    //---------------------------------------------
+    // PAGINATION
+    //---------------------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //---------------------------------------------
+    // SEARCH
+    //---------------------------------------------
+
+    //---------------------------------------------
+// SEARCH
+//---------------------------------------------
+
+let whereCondition = {};
+
+if (search) {
+
+  whereCondition = {
+    [Op.or]: [
+
+      { order_id: { [Op.like]: `%${search}%` } },
+
+      { transaction_type: { [Op.like]: `%${search}%` } },
+
+      { payment_type: { [Op.like]: `%${search}%` } },
+
+      { owner: { [Op.like]: `%${search}%` } },
+
+      { order_status: { [Op.like]: `%${search}%` } },
+
+      //-----------------------------
+      // 🔥 SEARCH IN ASSOCIATIONS
+      //-----------------------------
+
+      { "$personalDetails.first_name$": { [Op.like]: `%${search}%` } },
+      { "$personalDetails.last_name$": { [Op.like]: `%${search}%` } },
+      { "$personalDetails.phone_number$": { [Op.like]: `%${search}%` } },
+
+      { "$items.product_name$": { [Op.like]: `%${search}%` } },
+
+      { "$address.city$": { [Op.like]: `%${search}%` } },
+      { "$address.state$": { [Op.like]: `%${search}%` } },
+
+    ],
+  };
+}
+
+
+    //---------------------------------------------
+    // FETCH
+    //---------------------------------------------
+
+const { count, rows } = await Order.findAndCountAll({
+  where: whereCondition,
+  include: [
+    {
+      model: OrderItem,
+      as: "items",
+      include: [
+        {
+          model: ProductTemplete,
+          as: "product"
+        }
+      ],
+      required: false  // ✅ Add this to use LEFT JOIN instead of INNER JOIN
+    },
+    {
+      model: OrderAddress,
+      as: "address",
+      required: false  // ✅ Add this
+    },
+    {
+      model: OrderPersonalDetail,
+      as: "personalDetails",
+      required: false  // ✅ Add this
+    }
+  ],
+  order: [["created_at", "DESC"]],
+  limit,
+  offset,
+  distinct: true
+  // ❌ Remove this line: subQuery: false
+});
+
+    //---------------------------------------------
+    // CALCULATE TOTALS
+    //---------------------------------------------
+
+    const formattedOrders = rows.map(order => {
+
+      const o = order.toJSON();
+
+      let totalValue = 0;
+
+      const itemsWithValue = o.items.map(item => {
+
+        const product = item.product;
+
+        let itemTotal = 0;
+        const qty = item.requested_quantity || 0;
+        const duration = parseInt(o.rental_duration || 0);
+
+        if (product) {
+
+          if (o.transaction_type === "Rent") {
+
+            if (duration >= 12 && product.rent_price_1_year) {
+              itemTotal = qty * product.rent_price_1_year;
+            }
+            else if (duration >= 6 && product.rent_price_6_months) {
+              itemTotal = qty * (duration / 6) * product.rent_price_6_months;
+            }
+            else if (duration >= 1 && product.rent_price_per_month) {
+              itemTotal = qty * duration * product.rent_price_per_month;
+            }
+            else if (duration < 1 && product.rent_price_per_day) {
+              itemTotal = qty * (duration * 30) * product.rent_price_per_day;
+            }
+
+          }
+          else if (o.transaction_type === "Buy") {
+            itemTotal = qty * product.purchase_price;
+          }
+        }
+
+        totalValue += itemTotal;
+
+        return {
+          ...item,
+          item_total_value: itemTotal
+        };
+      });
+
+      const totalQuantity = o.items.reduce(
+        (sum, item) => sum + (item.requested_quantity || 0),
+        0
+      );
+
+      return {
+        ...o,
+        items: itemsWithValue,
+        total_quantity: totalQuantity,
+        total_order_value: totalValue,
+      };
+    });
+
+    //---------------------------------------------
+
+    res.status(200).json({
+
+      orders: formattedOrders,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(count / limit),
+        totalRecords: count,
+        limit
+      }
+
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Error fetching orders",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+
 
 // Get All Orders
-export const getAllOrders = async (req, res) => {
+export const getAllOrders1 = async (req, res) => {
   try {
     const orders = await Order.findAll({
       include: [{
@@ -495,7 +715,6 @@ export const getAllOrders = async (req, res) => {
     });
   }
 };
-
 
 
 

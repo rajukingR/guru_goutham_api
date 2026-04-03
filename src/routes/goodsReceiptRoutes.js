@@ -6,6 +6,7 @@ import {
   updateGoodsReceipt,
   deleteGoodsReceipt,
   getApprovedProductSummary,
+  getApprovedProductSummary1,
   getApprovedProductSummaryDashboard
 } from '../controllers/goodsReceiptController.js';
 
@@ -16,6 +17,8 @@ const router = express.Router();
 router.post('/create', authMiddleware, createGoodsReceipt);
 router.get('/', authMiddleware, getAllGoodsReceipts);
 router.get('/approved-receipt-products', authMiddleware, getApprovedProductSummary);
+router.get('/approved-receipt-products/list', authMiddleware, getApprovedProductSummary1);
+
 router.get('/approved-receipt-products/dashboard', authMiddleware, getApprovedProductSummaryDashboard);
 
 router.get('/:id', authMiddleware, getGoodsReceiptById);

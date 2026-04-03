@@ -2,6 +2,7 @@ import express from 'express';
 import {
   createDeliveryChallan,
   getAllDeliveryChallans,
+  getAllDeliveryChallans1,
   getAllDeliveryChallanDelivered,
   getDeliveryChallansByCustomerCode,
   getDeliveryChallansByCustomerCode1,
@@ -18,6 +19,8 @@ const router = express.Router();
 
 router.post('/create', authMiddleware, createDeliveryChallan);
 router.get('/', authMiddleware, getAllDeliveryChallans);
+router.get('/list', authMiddleware, getAllDeliveryChallans1);
+
 router.get('/approved-delivery-challan', authMiddleware, getAllDeliveryChallanDelivered);
 router.get('/customer/:customer_code', authMiddleware, getDeliveryChallansByCustomerCode);
 router.get('/customer-details/:customer_code', authMiddleware, getDeliveryChallansByCustomerCode1);

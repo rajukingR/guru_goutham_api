@@ -166,9 +166,117 @@ export const createDeliveryChallan = async (req, res) => {
 };
 
 
+export const getAllDeliveryChallans = async (req, res) => {
+  try {
+
+    //---------------------------------------------
+    // PAGINATION
+    //---------------------------------------------
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const offset = (page - 1) * limit;
+
+    //---------------------------------------------
+    // SEARCH
+    //---------------------------------------------
+
+    let whereCondition = {
+      is_direct_invoice: false
+    };
+
+    if (search) {
+
+      whereCondition = {
+        is_direct_invoice: false,
+
+        [Op.or]: [
+
+          { dc_id: { [Op.like]: `%${search}%` } },
+
+          { dispatch_order_number: { [Op.like]: `%${search}%` } },
+
+          { shipping_name: { [Op.like]: `%${search}%` } },
+
+          { city: { [Op.like]: `%${search}%` } },
+
+          { vehicle_number: { [Op.like]: `%${search}%` } },
+
+          { delivery_person_name: { [Op.like]: `%${search}%` } },
+
+          { delivery_person_phone_number: { [Op.like]: `%${search}%` } },
+
+          { dc_status: { [Op.like]: `%${search}%` } },
+
+          { payment_type: { [Op.like]: `%${search}%` } },
+
+          //-----------------------------
+          // 🔥 SEARCH INSIDE ITEMS
+          //-----------------------------
+
+          { "$items.product_name$": { [Op.like]: `%${search}%` } },
+
+        ]
+      };
+    }
+
+    //---------------------------------------------
+    // FETCH
+    //---------------------------------------------
+
+    const { count, rows } = await DeliveryChallan.findAndCountAll({
+
+      where: whereCondition,
+
+      include: [
+        {
+          model: DeliveryChallanItem,
+          as: "items",
+        }
+      ],
+
+      order: [["created_at", "DESC"]],
+
+      limit,
+      offset,
+
+      distinct: true,
+      subQuery: false   // 🔥 VERY IMPORTANT
+    });
+
+    //---------------------------------------------
+
+    res.status(200).json({
+
+      deliveryChallans: rows,
+
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(count / limit),
+        totalRecords: count,
+        limit
+      }
+
+    });
+
+  } catch (error) {
+
+    console.error("Error fetching delivery challans:", error);
+
+    res.status(500).json({
+      message: "Error fetching delivery challans",
+      error: error.message
+    });
+  }
+};
+
+
+
 
 // Get All Delivery Challans
-export const getAllDeliveryChallans = async (req, res) => {
+export const getAllDeliveryChallans1 = async (req, res) => {
   try {
     const deliveryChallans = await DeliveryChallan.findAll({
       where: {
@@ -982,6 +1090,7 @@ export const updateDeliveryChallan = async (req, res) => {
     const file = req.file; // ✅ assuming you're using multer for uploads
 
     const {
+      dc_id,
       dc_title,
       is_dc,
       order_id,
@@ -1053,6 +1162,7 @@ export const updateDeliveryChallan = async (req, res) => {
     }
 
     await deliveryChallan.update({
+      dc_id,
       dc_title,
       is_dc,
       order_id,

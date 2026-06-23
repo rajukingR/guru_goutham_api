@@ -7,7 +7,6 @@ const ProductTemplete = db.ProductTemplete;
 const GoodsReceipt = db.GoodsReceipt;
 const GoodsReceiptItem = db.GoodsReceiptItem;
 const AssembledComponent = db.AssembledComponent;
-const AssetIdComponent = db.AssetIdComponent;
 const AssetTransaction = db.AssetTransaction;
 const CreditNote = db.CreditNote;
 const CreditNoteItem = db.CreditNoteItem;
@@ -61,10 +60,6 @@ export const getAllProducts = async (req, res) => {
     //----------------------------------
 
     const whereCondition = {
-      brand: {
-        [Op.ne]: "Default Brand", // remove default products
-      },
-
       ...(search && {
         [Op.or]: [
           { product_name: { [Op.like]: `%${search}%` } },
@@ -634,26 +629,60 @@ export const getProductByIdWithTransactions = async (req, res) => {
     const productId = req.params.id;
     const parentAssetId = req.query.asset_id;
 
-    if (!parentAssetId) {
-      return res.status(400).json({ message: "asset_id query parameter is required" });
-    }
-
     // Fetch product template
     const product = await ProductTemplete.findByPk(productId);
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    // Fetch asset transactions
+    let peripherals_asset_ids = [];
+    let all_asset_ids = [];
+
+    // ✅ Only run this block if asset_id is provided
+    if (parentAssetId) {
+      const parentComponent = await AssembledComponent.findOne({
+        where: { asset_id: parentAssetId }
+      });
+
+      // ✅ If found → process
+      if (parentComponent) {
+        const assembledId = parentComponent.assembled_id;
+
+        const allComponents = await AssembledComponent.findAll({
+          where: { assembled_id: assembledId }
+        });
+
+        // Exclude main components
+        const mainComponents = ['ram', 'cabinet', 'processor', 'motherboard', 'storage', 'psu'];
+
+        peripherals_asset_ids = allComponents
+          .filter(comp => !mainComponents.includes(comp.type?.toLowerCase()))
+          .map(comp => ({
+            id: comp.id,
+            asset_id: comp.asset_id,
+            type: comp.type,
+            component_type: comp.component_type,
+            brand: comp.brand,
+            model: comp.model,
+            size: comp.size,
+            wattage: comp.wattage
+          }));
+
+        all_asset_ids = allComponents.map(comp => comp.asset_id);
+      }
+
+      // ❌ If NOT found → skip (no error)
+    }
+
+    // Fetch asset transactions (works even without asset_id)
     const assetTransactions = await AssetTransaction.findAll({
       where: {
         product_id: productId,
-        parent_asset_id: parentAssetId,
+        ...(parentAssetId && { parent_asset_id: parentAssetId }),
       },
       order: [["created_at", "DESC"]],
     });
 
-    // ✅ itemsInfo: true only when status = "Removed" and is_default = "Default"
     const itemsInfo = {
       ram: assetTransactions.some(
         (t) => t.item_type === "ram" && t.status === "Removed" && t.is_default === "Default"
@@ -670,7 +699,10 @@ export const getProductByIdWithTransactions = async (req, res) => {
       ...product.toJSON(),
       itemsInfo,
       assetTransactions,
+      peripherals_asset_ids,
+      all_asset_ids,
     });
+
   } catch (error) {
     console.error("Sequelize error:", error);
     res.status(500).json({

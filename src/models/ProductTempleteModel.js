@@ -135,6 +135,14 @@ export default (sequelize, DataTypes) => {
     purchase_price: {
       type: DataTypes.DECIMAL(10, 2),
     },
+
+    current_price: {
+      type: DataTypes.DECIMAL(10, 2),
+    },
+    purchase_date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
     offer_purchase_price: {
       type: DataTypes.DECIMAL(10, 2),
     },
@@ -229,6 +237,18 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.STRING(100),
     },
 
+    cpu: {
+      type: DataTypes.STRING(100),
+    },
+
+    max_processor_speed: {
+      type: DataTypes.STRING(100),
+    },
+
+    monitor_number: {
+      type: DataTypes.STRING(100),
+    },
+
 
     // Control
     is_active: {
@@ -249,10 +269,6 @@ export default (sequelize, DataTypes) => {
     ProductTemplete.hasMany(models.LeadProduct, {
       foreignKey: 'product_id',
       as: 'lead_products'
-    });
-    ProductTemplete.hasMany(models.GRNItem, {
-      foreignKey: 'product_id',
-      as: 'grn_items'
     });
     ProductTemplete.hasMany(models.OrderItem, {
       foreignKey: 'product_id',

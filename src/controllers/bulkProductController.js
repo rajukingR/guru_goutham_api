@@ -81,10 +81,11 @@ export const uploadExcel = multer({
     }
 });
 
-// Main bulk upload controller
+// Main bulk upload controller - NOW PROCESSES ALL SHEETS
 export const bulkUploadProducts = async (req, res) => {
     let workbook;
-    let jsonData;
+    let allRows = [];
+    let sheetNames = [];
 
     try {
         // Check if file was uploaded
@@ -169,60 +170,87 @@ export const bulkUploadProducts = async (req, res) => {
             });
         }
 
-        // Get the first sheet
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        
-        if (!worksheet) {
-            cleanupUploadedFile(req.file.path);
-            return res.status(400).json({
-                success: false,
-                message: 'Could not read the worksheet from Excel file',
-                sheetName: firstSheetName
-            });
+        sheetNames = workbook.SheetNames;
+        console.log(`📊 Found ${sheetNames.length} sheets:`, sheetNames);
+
+        // ============================================
+        // PROCESS ALL SHEETS - FIX APPLIED HERE
+        // ============================================
+        for (const sheetName of sheetNames) {
+            const worksheet = workbook.Sheets[sheetName];
+            if (!worksheet) {
+                console.log(`⚠️ Sheet "${sheetName}" could not be read, skipping`);
+                continue;
+            }
+
+            try {
+                // Convert worksheet to JSON
+                let sheetData = XLSX.utils.sheet_to_json(worksheet);
+                
+                // Filter out empty rows and header rows
+                sheetData = sheetData.filter(row => {
+                    // Skip rows where product_name is empty, undefined, or is actually a header
+                    const productName = row.product_name || row['product_name'] || '';
+                    if (!productName || productName.trim() === '') {
+                        return false;
+                    }
+                    // Skip if it looks like a header row
+                    if (typeof productName === 'string' && 
+                        (productName.toLowerCase().includes('product') || 
+                         productName.toLowerCase().includes('name') ||
+                         productName.toLowerCase().includes('header'))) {
+                        return false;
+                    }
+                    return true;
+                });
+                
+                if (sheetData && sheetData.length > 0) {
+                    console.log(`📄 Sheet "${sheetName}" has ${sheetData.length} valid rows`);
+                    // Add sheet name to each row for tracking
+                    sheetData.forEach(row => {
+                        row._sheetName = sheetName;
+                    });
+                    allRows = allRows.concat(sheetData);
+                } else {
+                    console.log(`⚠️ Sheet "${sheetName}" has no data rows, skipping`);
+                }
+            } catch (jsonError) {
+                console.error(`✗ Error converting sheet "${sheetName}" to JSON:`, jsonError.message);
+                // Continue with other sheets
+            }
         }
 
-        // Convert worksheet to JSON
-        try {
-            jsonData = XLSX.utils.sheet_to_json(worksheet);
-        } catch (jsonError) {
-            console.error('✗ Error converting worksheet to JSON:', jsonError.message);
-            cleanupUploadedFile(req.file.path);
-            
-            return res.status(400).json({
-                success: false,
-                message: 'Cannot convert Excel data to readable format',
-                error: jsonError.message
-            });
-        }
-
-        if (!jsonData || jsonData.length === 0) {
+        // Check if we have any data to process
+        if (allRows.length === 0) {
             cleanupUploadedFile(req.file.path);
             return res.status(400).json({
                 success: false,
-                message: 'Excel file has no data. Please add products to the file.',
+                message: 'No data found in any sheet. Please add products to the file.',
                 fileInfo: {
                     name: req.file.originalname,
                     size: stats.size,
-                    sheets: workbook.SheetNames
+                    sheets: sheetNames
                 }
             });
         }
 
+        console.log(`📊 Total rows across all sheets: ${allRows.length}`);
+
         // Display first few rows for debugging
-        for (let i = 0; i < Math.min(3, jsonData.length); i++) {
-            const row = jsonData[i];
-            Object.keys(row).forEach(key => {
-            });
+        for (let i = 0; i < Math.min(3, allRows.length); i++) {
+            const row = allRows[i];
+            console.log(`Row ${i+1} from sheet "${row._sheetName || 'Unknown'}":`, row.product_name || 'No product name');
         }
 
         const results = {
-            total: jsonData.length,
+            total: allRows.length,
             success: 0,
             failed: 0,
             skipped: 0,
             errors: [],
-            products: []
+            products: [],
+            sheets: sheetNames,
+            sheetStats: {}
         };
 
         // Helper function to check if all values match existing product
@@ -300,10 +328,11 @@ export const bulkUploadProducts = async (req, res) => {
             return true;
         };
 
-        // Process each row
-        for (let i = 0; i < jsonData.length; i++) {
+        // Process each row from ALL sheets
+        for (let i = 0; i < allRows.length; i++) {
             try {
-                const excelRow = jsonData[i];
+                const excelRow = allRows[i];
+                const sheetName = excelRow._sheetName || 'Unknown';
 
                 // Clean and validate data
                 const productData = cleanProductData(excelRow);
@@ -313,11 +342,23 @@ export const bulkUploadProducts = async (req, res) => {
                     results.failed++;
                     results.errors.push({
                         row: i + 2,
+                        sheet: sheetName,
                         productName: productData.product_name || 'Unknown',
                         errors: validationErrors
                     });
                     continue;
                 }
+
+                // Track sheet statistics
+                if (!results.sheetStats[sheetName]) {
+                    results.sheetStats[sheetName] = { 
+                        total: 0,
+                        success: 0, 
+                        failed: 0, 
+                        skipped: 0 
+                    };
+                }
+                results.sheetStats[sheetName].total++;
 
                 // Check if product exists with same product_id
                 if (productData.product_id) {
@@ -331,6 +372,7 @@ export const bulkUploadProducts = async (req, res) => {
                         // Check if it's an exact duplicate (all values same)
                         if (isExactDuplicate(productData, existingProduct)) {
                             results.skipped++;
+                            results.sheetStats[sheetName].skipped++;
                             continue; // Skip this row - it's an exact duplicate
                         }
                         // If not exact duplicate, update with new data
@@ -344,11 +386,13 @@ export const bulkUploadProducts = async (req, res) => {
                             });
                             
                             results.success++;
+                            results.sheetStats[sheetName].success++;
                             results.products.push({
                                 id: existingProduct.id,
                                 product_id: existingProduct.product_id,
                                 product_name: existingProduct.product_name,
-                                action: 'updated'
+                                action: 'updated',
+                                sheet: sheetName
                             });
                             continue;
                         }
@@ -372,6 +416,7 @@ export const bulkUploadProducts = async (req, res) => {
                     // Check if all fields match
                     if (isExactDuplicate(productData, existingWithGeneratedId)) {
                         results.skipped++;
+                        results.sheetStats[sheetName].skipped++;
                         continue;
                     } else {
                         // Generate a new unique product_id
@@ -395,22 +440,30 @@ export const bulkUploadProducts = async (req, res) => {
                 // Create new product
                 const product = await ProductTemplete.create(productData);
                 results.success++;
+                results.sheetStats[sheetName].success++;
                 results.products.push({
                     id: product.id,
                     product_id: product.product_id,
                     product_name: product.product_name,
-                    action: 'created'
+                    action: 'created',
+                    sheet: sheetName
                 });
 
-                if (i % 10 === 0 || i === jsonData.length - 1) {
+                if (i % 10 === 0 || i === allRows.length - 1) {
                 }
 
             } catch (rowError) {
                 console.error(`❌ Error in row ${i + 1}:`, rowError.message);
                 results.failed++;
+                const sheetName = allRows[i]?._sheetName || 'Unknown';
+                if (!results.sheetStats[sheetName]) {
+                    results.sheetStats[sheetName] = { total: 0, success: 0, failed: 0, skipped: 0 };
+                }
+                results.sheetStats[sheetName].failed++;
                 results.errors.push({
                     row: i + 2,
-                    productName: jsonData[i]?.product_name || 'Unknown',
+                    sheet: sheetName,
+                    productName: allRows[i]?.product_name || 'Unknown',
                     errors: [rowError.message || 'Unknown error occurred']
                 });
             }
@@ -422,13 +475,15 @@ export const bulkUploadProducts = async (req, res) => {
         // Send success response
         const response = {
             success: true,
-            message: `Bulk upload completed: ${results.success} created, ${results.skipped} skipped (exact duplicates), ${results.failed} failed`,
+            message: `Bulk upload completed: ${results.success} created/updated, ${results.skipped} skipped (exact duplicates), ${results.failed} failed`,
             summary: {
                 total: results.total,
                 success: results.success,
                 failed: results.failed,
                 skipped: results.skipped,
-                successRate: results.total > 0 ? `${Math.round((results.success / results.total) * 100)}%` : '0%'
+                successRate: results.total > 0 ? `${Math.round((results.success / results.total) * 100)}%` : '0%',
+                sheets: results.sheetStats,
+                sheetNames: results.sheets
             },
             errors: results.errors.length > 0 ? results.errors : undefined,
             createdProducts: results.products.length > 0 ? results.products.slice(0, 10) : undefined,
@@ -478,6 +533,11 @@ function cleanProductData(row) {
     
     // Copy all properties from row
     Object.keys(row).forEach(key => {
+        // Skip internal _sheetName field
+        if (key === '_sheetName') {
+            return;
+        }
+        
         const value = row[key];
         
         // Handle undefined/null
@@ -687,16 +747,9 @@ export const bulkCreateProducts = async (req, res) => {
     }
 };
 
-
-
-
-
-
-
 // Download product template (Excel format) WITH ACTUAL DATA
 export const downloadProductTemplate = async (req, res) => {
     try {
-
         const timestamp = new Date().toISOString().split('T')[0];
         const fileName = `Product_Template_With_Data_${timestamp}.xlsx`;
 
@@ -704,348 +757,183 @@ export const downloadProductTemplate = async (req, res) => {
         const wb = xlsx.utils.book_new();
 
         // ====================
-        // 1. GET ACTUAL TABLE COLUMNS
+        // 1. GET ACTUAL PRODUCT DATA
         // ====================
-        try {
-            // Get column structure
-            const columns = await db.sequelize.query(
-                `SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COLUMN_COMMENT
-         FROM INFORMATION_SCHEMA.COLUMNS 
-         WHERE TABLE_SCHEMA = :databaseName 
-         AND TABLE_NAME = 'products_templete'
-         ORDER BY ORDINAL_POSITION`, {
-                    replacements: {
-                        databaseName: process.env.DB_NAME
-                    },
-                    type: db.sequelize.QueryTypes.SELECT
-                }
-            );
+        const products = await db.ProductTemplete.findAll({
+            order: [['id', 'ASC']],
+            raw: true
+        });
 
-
-            // ====================
-            // 2. GET ACTUAL PRODUCT DATA
-            // ====================
-            const products = await db.ProductTemplete.findAll({
-                limit: 1000, // Limit to 100 products
-                order: [
-                    ['id', 'ASC']
-                ],
-                raw: true // Get plain objects
+        // ====================
+        // 2. LAPTOP SHEET
+        // ====================
+        const laptops = products.filter(p => p.product_category === 'Laptop');
+        
+        const laptopColumns = [
+            'product_id', 'system_id', 'product_category', 'product_name', 'brand', 
+            'model', 'description', 'hsn_code', 'display_size', 'processor', 
+            'processor_model', 'processor_core', 'processor_speed', 'generation', 
+            'ram', 'ramType', 'ram_speed', 'ram_slots', 'storage', 'disk_type', 'graphics', 'os', 'purchase_price', 
+            'rent_percent_per_month', 'rent_price_per_month', 'is_active'
+        ];
+        
+        const laptopData = [laptopColumns];
+        
+        laptops.forEach((product) => {
+            const row = laptopColumns.map(col => {
+                if (col === 'product_id') return product.id || '';
+                if (col === 'system_id') return product.product_id || '';
+                return product[col] !== null && product[col] !== undefined ? product[col] : '';
             });
+            laptopData.push(row);
+        });
+        
+        const wsLaptop = xlsx.utils.aoa_to_sheet(laptopData);
+        styleWorksheet(wsLaptop, laptopColumns.length);
+        xlsx.utils.book_append_sheet(wb, wsLaptop, `Laptop${laptops.length ? ` (${laptops.length})` : ''}`);
 
-
-            // ====================
-            // 3. CREATE TEMPLATE WITH ACTUAL DATA
-            // ====================
-            const headers = columns.map(col => col.COLUMN_NAME);
-
-            // Create data array: headers + actual product data
-            const data = [headers]; // Start with headers
-
-            // Add actual product data rows
-            products.forEach(product => {
-                const row = headers.map(header => {
-                    const value = product[header];
-
-                    // Format values for Excel
-                    if (value === null || value === undefined) {
-                        return '';
-                    }
-
-                    // Handle boolean values
-                    if (typeof value === 'boolean') {
-                        return value ? 'true' : 'false';
-                    }
-
-                    // Handle dates
-                    if (value instanceof Date) {
-                        return value.toISOString().split('T')[0]; // YYYY-MM-DD format
-                    }
-
-                    // Return as string
-                    return String(value);
-                });
-                data.push(row);
+        // ====================
+        // 3. DESKTOP SHEET
+        // ====================
+        const desktops = products.filter(p => p.product_category === 'Desktop');
+        
+        const desktopColumns = [
+            'product_id', 'system_id', 'product_category', 'product_name', 'brand', 
+            'model', 'description', 'hsn_code', 'st_number', 'motherboard', 'cpu',
+            'processor_model', 'processor_speed', 'max_processor_speed', 'generation', 
+            'processor_core', 'ram', 'storage', 'smps', 'display_size', 'monitor_number',
+            'graphics', 'os', 'purchase_price', 'rent_percent_per_month', 
+            'rent_price_per_month', 'stock_location', 'is_active'
+        ];
+        
+        const desktopData = [desktopColumns];
+        
+        desktops.forEach((product) => {
+            const row = desktopColumns.map(col => {
+                if (col === 'product_id') return product.id || '';
+                if (col === 'system_id') return product.product_id || '';
+                return product[col] !== null && product[col] !== undefined ? product[col] : '';
             });
+            desktopData.push(row);
+        });
+        
+        const wsDesktop = xlsx.utils.aoa_to_sheet(desktopData);
+        styleWorksheet(wsDesktop, desktopColumns.length);
+        xlsx.utils.book_append_sheet(wb, wsDesktop, `Desktop${desktops.length ? ` (${desktops.length})` : ''}`);
 
-            // If no products found, add sample placeholder
-            if (products.length === 0) {
-                const sampleRow = headers.map(header => {
-                    // Add sample values based on column type
-                    if (header === 'product_id') return 'PRD-XXXXX';
-                    if (header === 'product_name') return 'Sample Product';
-                    if (header === 'product_category') return 'Laptop';
-                    if (header === 'purchase_price') return '10000.00';
-                    if (header === 'rent_percent_per_month') return '10.00';
-                    if (header.includes('price')) return '0.00';
-                    if (header.includes('percent')) return '0.00';
-                    if (header === 'is_active') return 'true';
-                    if (header === 'created_at' || header === 'updated_at') {
-                        return new Date().toISOString().split('T')[0];
-                    }
-                    return '';
-                });
-                data.push(sampleRow);
-            }
+        // ====================
+        // 4. ASSEMBLED SHEET
+        // ====================
+        const assembled = products.filter(p => p.product_category === 'Assembled');
+        
+        const assembledColumns = [
+            'product_id', 'system_id', 'product_category', 'product_name', 'brand', 
+            'model', 'description', 'hsn_code', 'st_number', 'motherboard', 'cpu',
+            'processor_model', 'processor_speed', 'max_processor_speed', 'generation',
+            'processor_core', 'ram', 'storage', 'smps', 'display_size', 'monitor_number',
+            'graphics', 'cabinet', 'cooling_fan', 'os', 'warranty', 'purchase_price',
+            'rent_percent_per_month', 'rent_price_per_month', 'stock_location', 'is_active'
+        ];
+        
+        const assembledData = [assembledColumns];
+        
+        assembled.forEach((product) => {
+            const row = assembledColumns.map(col => {
+                if (col === 'product_id') return product.id || '';
+                if (col === 'system_id') return product.product_id || '';
+                return product[col] !== null && product[col] !== undefined ? product[col] : '';
+            });
+            assembledData.push(row);
+        });
+        
+        const wsAssembled = xlsx.utils.aoa_to_sheet(assembledData);
+        styleWorksheet(wsAssembled, assembledColumns.length);
+        xlsx.utils.book_append_sheet(wb, wsAssembled, `Assembled${assembled.length ? ` (${assembled.length})` : ''}`);
 
-            // Create worksheet with headers and data
-            const ws = xlsx.utils.aoa_to_sheet(data);
-
-            // Style headers
-            const range = xlsx.utils.decode_range(ws['!ref']);
-            for (let C = range.s.c; C <= range.e.c; ++C) {
-                const cellAddress = xlsx.utils.encode_cell({
-                    r: 0,
-                    c: C
-                });
-                if (ws[cellAddress]) {
-                    const column = columns[C];
-                    const isNullable = column.IS_NULLABLE === 'YES';
-
-                    // Style header row
-                    ws[cellAddress].s = {
-                        font: {
-                            bold: true,
-                            color: {
-                                rgb: isNullable ? "000000" : "FF0000"
-                            },
-                            sz: 11
-                        },
-                        fill: {
-                            fgColor: {
-                                rgb: isNullable ? "F0F0F0" : "FFFFCC"
-                            }
-                        },
-                        alignment: {
-                            vertical: 'center',
-                            horizontal: 'center',
-                            wrapText: false
-                        },
-                        border: {
-                            top: {
-                                style: 'thin',
-                                color: {
-                                    rgb: "000000"
-                                }
-                            },
-                            bottom: {
-                                style: 'thin',
-                                color: {
-                                    rgb: "000000"
-                                }
-                            },
-                            left: {
-                                style: 'thin',
-                                color: {
-                                    rgb: "000000"
-                                }
-                            },
-                            right: {
-                                style: 'thin',
-                                color: {
-                                    rgb: "000000"
-                                }
-                            }
-                        }
-                    };
-                }
-            }
-
-            // Style data rows
-            for (let R = 1; R <= range.e.r; ++R) {
-                for (let C = range.s.c; C <= range.e.c; ++C) {
-                    const cellAddress = xlsx.utils.encode_cell({
-                        r: R,
-                        c: C
-                    });
-                    if (ws[cellAddress]) {
-                        // Alternate row colors
-                        const bgColor = R % 2 === 0 ? "FFFFFF" : "F9F9F9";
-
-                        ws[cellAddress].s = {
-                            font: {
-                                color: {
-                                    rgb: "000000"
-                                },
-                                sz: 10
-                            },
-                            fill: {
-                                fgColor: {
-                                    rgb: bgColor
-                                }
-                            },
-                            alignment: {
-                                vertical: 'center',
-                                horizontal: 'left'
-                            },
-                            border: {
-                                left: {
-                                    style: 'thin',
-                                    color: {
-                                        rgb: "E0E0E0"
-                                    }
-                                },
-                                right: {
-                                    style: 'thin',
-                                    color: {
-                                        rgb: "E0E0E0"
-                                    }
-                                },
-                                bottom: {
-                                    style: 'thin',
-                                    color: {
-                                        rgb: "E0E0E0"
-                                    }
-                                }
-                            }
-                        };
-                    }
-                }
-            }
-
-            // Freeze header row (so headers stay visible when scrolling)
-            ws['!freeze'] = {
-                xSplit: 0,
-                ySplit: 1,
-                topLeftCell: 'A2',
-                activePane: 'bottomLeft'
-            };
-
-            // Set column widths
-            const colWidths = headers.map(header => ({
-                wch: Math.min(Math.max(header.length, 12), 25)
-            }));
-            ws['!cols'] = colWidths;
-
-            // Auto-filter on headers
-            ws['!autofilter'] = {
-                ref: `A1:${xlsx.utils.encode_cell({r: 0, c: headers.length - 1})}`
-            };
-
-            xlsx.utils.book_append_sheet(wb, ws, 'Products');
-
-            // ====================
-            // 4. CREATE EMPTY TEMPLATE SHEET
-            // ====================
-            // Create a second sheet with just headers (for fresh template)
-            const emptyData = [headers];
-            const wsEmpty = xlsx.utils.aoa_to_sheet(emptyData);
-
-            // Style empty template headers
-            const emptyRange = xlsx.utils.decode_range(wsEmpty['!ref']);
-            for (let C = emptyRange.s.c; C <= emptyRange.e.c; ++C) {
-                const cellAddress = xlsx.utils.encode_cell({
-                    r: 0,
-                    c: C
-                });
-                if (wsEmpty[cellAddress]) {
-                    const column = columns[C];
-                    const isNullable = column.IS_NULLABLE === 'YES';
-
-                    wsEmpty[cellAddress].s = {
-                        font: {
-                            bold: true,
-                            color: {
-                                rgb: isNullable ? "000000" : "FF0000"
-                            },
-                            sz: 11
-                        },
-                        fill: {
-                            fgColor: {
-                                rgb: isNullable ? "F0F0F0" : "FFFFCC"
-                            }
-                        },
-                        alignment: {
-                            vertical: 'center',
-                            horizontal: 'center'
-                        },
-                        border: {
-                            top: {
-                                style: 'thin',
-                                color: {
-                                    rgb: "000000"
-                                }
-                            },
-                            bottom: {
-                                style: 'thin',
-                                color: {
-                                    rgb: "000000"
-                                }
-                            },
-                            left: {
-                                style: 'thin',
-                                color: {
-                                    rgb: "000000"
-                                }
-                            },
-                            right: {
-                                style: 'thin',
-                                color: {
-                                    rgb: "000000"
-                                }
-                            }
-                        }
-                    };
-                }
-            }
-
-            wsEmpty['!cols'] = colWidths;
-            xlsx.utils.book_append_sheet(wb, wsEmpty, 'Empty Template');
-
-            // ====================
-            // 5. CREATE INSTRUCTIONS SHEET
-            // ====================
-            const instructions = createInstructions(columns, products.length);
-            const wsInstructions = xlsx.utils.aoa_to_sheet(instructions);
-            wsInstructions['!cols'] = [{
-                wch: 100
-            }];
-            xlsx.utils.book_append_sheet(wb, wsInstructions, 'Instructions');
-
-            // ====================
-            // 6. CREATE COLUMNS REFERENCE SHEET
-            // ====================
-            const columnReference = createColumnReference(columns);
-            const wsReference = xlsx.utils.aoa_to_sheet(columnReference);
-            wsReference['!cols'] = [{
-                    wch: 25
-                }, // Column Name
-                {
-                    wch: 15
-                }, // Data Type
-                {
-                    wch: 10
-                }, // Required
-                {
-                    wch: 15
-                }, // Default
-                {
-                    wch: 30
-                } // Description
+        // ====================
+        // 5. BRANDED DESKTOP SHEET
+        // ====================
+        const brandedDesktops = products.filter(p => p.product_category === 'Branded Desktop');
+        
+        if (brandedDesktops.length > 0) {
+            const brandedColumns = [
+                'product_id', 'system_id', 'product_category', 'product_name', 'brand', 
+                'model', 'description', 'hsn_code', 'st_number', 'motherboard', 'cpu',
+                'processor_model', 'processor_speed', 'generation', 'processor_core',
+                'ram', 'storage', 'smps', 'display_size', 'graphics', 'os',
+                'purchase_price', 'rent_percent_per_month', 'rent_price_per_month',
+                'stock_location', 'is_active'
             ];
-            xlsx.utils.book_append_sheet(wb, wsReference, 'Column Reference');
-
-            // ====================
-            // 7. SAVE AND SEND FILE
-            // ====================
-            const buffer = xlsx.write(wb, {
-                type: 'buffer',
-                bookType: 'xlsx'
+            
+            const brandedData = [brandedColumns];
+            
+            brandedDesktops.forEach((product) => {
+                const row = brandedColumns.map(col => {
+                    if (col === 'product_id') return product.id || '';
+                    if (col === 'system_id') return product.product_id || '';
+                    return product[col] !== null && product[col] !== undefined ? product[col] : '';
+                });
+                brandedData.push(row);
             });
-
-            // Set response headers
-            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-            res.setHeader('Content-Length', buffer.length);
-
-            // Send file
-            res.send(buffer);
-
-        } catch (dbError) {
-            console.error('❌ Database error:', dbError.message);
-            // Fallback to simple template
-            return createSimpleTemplateWithSampleData(res, fileName, wb);
+            
+            const wsBranded = xlsx.utils.aoa_to_sheet(brandedData);
+            styleWorksheet(wsBranded, brandedColumns.length);
+            xlsx.utils.book_append_sheet(wb, wsBranded, `Branded Desktop${brandedDesktops.length ? ` (${brandedDesktops.length})` : ''}`);
         }
+
+        // ====================
+        // 6. ALL PRODUCTS SHEET (Complete Data)
+        // ====================
+        const allColumns = ['product_id', 'system_id', ...Object.keys(products[0] || {}).filter(k => k !== 'id' && k !== 'product_id')];
+        const allProductsData = [allColumns];
+        
+        products.forEach((product) => {
+            const row = allColumns.map(col => {
+                if (col === 'product_id') return product.id || '';
+                if (col === 'system_id') return product.product_id || '';
+                const value = product[col];
+                if (value === null || value === undefined) return '';
+                if (value instanceof Date) return value.toISOString().split('T')[0];
+                return String(value);
+            });
+            allProductsData.push(row);
+        });
+        
+        const wsAll = xlsx.utils.aoa_to_sheet(allProductsData);
+        styleWorksheet(wsAll, allColumns.length);
+        xlsx.utils.book_append_sheet(wb, wsAll, `All Products (${products.length})`);
+
+        // ====================
+        // 7. EMPTY TEMPLATE SHEET
+        // ====================
+        const emptyColumns = [
+            'system_id', 'product_category', 'product_name', 'brand', 'model', 
+            'description', 'hsn_code', 'display_size', 'processor_model', 
+            'processor_core', 'processor_speed', 'max_processor_speed', 'generation', 
+            'motherboard', 'battery', 'adapter', 'ram', 'ramType', 'ram_speed', 
+            'ram_slots', 'storage', 'disk_type', 'graphics', 'cabinet', 'smps', 
+            'cooling_fan', 'os', 'warranty', 'purchase_price', 
+            'rent_percent_per_month', 'rent_price_per_month', 'st_number', 
+            'monitor_number', 'cpu', 'stock_location', 'is_active'
+        ];
+        
+        const emptyData = [emptyColumns];
+        const wsEmpty = xlsx.utils.aoa_to_sheet(emptyData);
+        styleWorksheet(wsEmpty, emptyColumns.length);
+        xlsx.utils.book_append_sheet(wb, wsEmpty, 'Empty Template');
+
+        // ====================
+        // 8. SAVE AND SEND
+        // ====================
+        const buffer = xlsx.write(wb, {
+            type: 'buffer',
+            bookType: 'xlsx'
+        });
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', buffer.length);
+        res.send(buffer);
 
     } catch (error) {
         console.error('❌ Error generating template:', error.message);
@@ -1055,6 +943,61 @@ export const downloadProductTemplate = async (req, res) => {
             error: error.message
         });
     }
+};
+
+// Helper function to style worksheets
+const styleWorksheet = (ws, columnCount) => {
+    const range = xlsx.utils.decode_range(ws['!ref']);
+    
+    if (!range) return;
+    
+    // Style headers (first row)
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellAddress = xlsx.utils.encode_cell({ r: 0, c: C });
+        if (ws[cellAddress]) {
+            ws[cellAddress].s = {
+                font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
+                fill: { fgColor: { rgb: "4472C4" } },
+                alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
+                border: {
+                    top: { style: 'thin', color: { rgb: "000000" } },
+                    bottom: { style: 'thin', color: { rgb: "000000" } },
+                    left: { style: 'thin', color: { rgb: "000000" } },
+                    right: { style: 'thin', color: { rgb: "000000" } }
+                }
+            };
+        }
+    }
+    
+    // Style data rows
+    for (let R = 1; R <= range.e.r; ++R) {
+        const bgColor = R % 2 === 0 ? "FFFFFF" : "F2F2F2";
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cellAddress = xlsx.utils.encode_cell({ r: R, c: C });
+            if (ws[cellAddress]) {
+                ws[cellAddress].s = {
+                    font: { color: { rgb: "000000" }, sz: 10 },
+                    fill: { fgColor: { rgb: bgColor } },
+                    alignment: { vertical: 'center', horizontal: 'left' },
+                    border: {
+                        left: { style: 'thin', color: { rgb: "E0E0E0" } },
+                        right: { style: 'thin', color: { rgb: "E0E0E0" } },
+                        bottom: { style: 'thin', color: { rgb: "E0E0E0" } }
+                    }
+                };
+            }
+        }
+    }
+    
+    // Set column widths
+    const colWidths = [];
+    for (let i = 0; i < columnCount; i++) {
+        colWidths.push({ wch: 18 });
+    }
+    ws['!cols'] = colWidths;
+    
+    // Freeze header row
+    ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' };
 };
 
 // Updated instructions with data info

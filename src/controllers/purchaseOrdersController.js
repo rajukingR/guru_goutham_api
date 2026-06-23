@@ -5,7 +5,6 @@ import { Op } from "sequelize";
 const PurchaseOrder = db.PurchaseOrder;
 const Supplier = db.Supplier;
 const PurchaseOrderItem = db.PurchaseOrderItem;
-const Product = db.Product;
 
 export const createPurchaseOrder = async (req, res) => {
   const t = await db.sequelize.transaction(); // start transaction
@@ -181,13 +180,6 @@ export const getApprovedPurchaseOrders = async (req, res) => {
         {
           model: db.PurchaseOrderItem,
           as: 'selected_products',
-          include: [
-            {
-              model: db.Product,
-              as: 'product',
-              attributes: ['name', 'model'],
-            }
-          ]
         }
       ],
       order: [['id', 'DESC']],

@@ -8,7 +8,6 @@ const {
 
 const Quotation = db.Quotation;
 const QuotationItem = db.QuotationItem;
-const Product = db.Product;
 const Lead = db.Lead;
 const GoodsReceiptItem = db.GoodsReceiptItem;
 const Order = db.Order;
@@ -70,7 +69,7 @@ export const createQuotation = async (req, res) => {
           overlap.forEach((id) => {
             foundDuplicates.push({
               asset_id: id,
-              product_name: row.product_name || "Unknown Product",
+              product_name: row.product_name || "Unknown",
             });
           });
         });
@@ -107,7 +106,6 @@ export const createQuotation = async (req, res) => {
     if (items && Array.isArray(items)) {
       const itemsWithDeviceIds = await Promise.all(
         items.map(async (item) => {
-          const product = await Product.findByPk(item.product_id);
 
           return {
             quotation_id: quotation.id,
@@ -317,10 +315,27 @@ export const getAllQuotations1 = async (req, res) => {
 
 export const getAllQuotationsApproved = async (req, res) => {
   try {
+    // First, get all quotation IDs that have approved orders
+    const approvedOrders = await Order.findAll({
+      where: {
+        order_status: 'Approved'
+      },
+      attributes: ['quotation_id'],
+      raw: true
+    });
+
+    // Extract unique quotation IDs that have approved orders
+    const quotationIdsWithApprovedOrders = [...new Set(
+      approvedOrders.map(order => order.quotation_id).filter(id => id !== null)
+    )];
+
     const quotations = await Quotation.findAll({
       where: {
         status: 'Approved',
-        is_direct_invoice: false
+        is_direct_invoice: false,
+        id: {
+          [Op.notIn]: quotationIdsWithApprovedOrders // Exclude quotations with approved orders
+        }
       },
       include: [{
           model: QuotationItem,
@@ -333,7 +348,7 @@ export const getAllQuotationsApproved = async (req, res) => {
         },
         {
           model: Contact,
-          as: 'customer', // This alias must match the one in the association
+          as: 'customer',
           attributes: [
             'id',
             'first_name',
@@ -357,11 +372,11 @@ export const getAllQuotationsApproved = async (req, res) => {
       ],
       order: [
         ['id', 'DESC']
-      ] // <-- Sort leads by created_at descending
-
+      ]
     });
 
-    const approvedOrders = await Order.findAll({
+    // Get approved orders again for asset availability calculation (only for remaining quotations)
+    const approvedOrdersForAssets = await Order.findAll({
       where: {
         order_status: 'Approved'
       },
@@ -374,7 +389,7 @@ export const getAllQuotationsApproved = async (req, res) => {
 
     const usedDeviceMap = {};
 
-    approvedOrders.forEach(order => {
+    approvedOrdersForAssets.forEach(order => {
       order.items.forEach(item => {
         const productId = item.product_id;
         let deviceIds = [];
@@ -420,7 +435,6 @@ export const getAllQuotationsApproved = async (req, res) => {
     });
   }
 };
-
 
 
 
@@ -713,7 +727,7 @@ export const updateQuotation = async (req, res) => {
         overlap.forEach((id) => {
           foundDuplicates.push({
             asset_id: id,
-            product_name: row.product_name || "Unknown Product",
+            product_name: row.product_name || "Unknown",
           });
         });
       });

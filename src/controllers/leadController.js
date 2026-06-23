@@ -3,7 +3,8 @@ const {
   Lead,
   ProductTemplete,
   Contact,
-  LeadProduct
+  LeadProduct,
+  Quotation,
 } = db;
 import { Op } from "sequelize";
 
@@ -37,7 +38,7 @@ export const createLead = async (req, res) => {
       payment_type,
       lead_source,
       source_of_enquiry,
-      
+
       lead_date,
       owner,
       remarks,
@@ -115,13 +116,13 @@ export const getAllLeads = async (req, res) => {
           as: 'contact',
           where: search
             ? {
-                [Op.or]: [
-                  { first_name: { [Op.like]: `%${search}%` } },
-                  { last_name: { [Op.like]: `%${search}%` } },
-                  { phone_number: { [Op.like]: `%${search}%` } },
-                  { company_name: { [Op.like]: `%${search}%` } },
-                ],
-              }
+              [Op.or]: [
+                { first_name: { [Op.like]: `%${search}%` } },
+                { last_name: { [Op.like]: `%${search}%` } },
+                { phone_number: { [Op.like]: `%${search}%` } },
+                { company_name: { [Op.like]: `%${search}%` } },
+              ],
+            }
             : undefined,
           required: false, // ⭐ VERY IMPORTANT
         },
@@ -271,8 +272,26 @@ export const getAllLeads1 = async (req, res) => {
 
 export const getAllLeadsActived = async (req, res) => {
   try {
+    // First, get all lead IDs that have approved quotations
+    const leadsWithApprovedQuotations = await Quotation.findAll({
+      where: {
+        status: 'Approved'
+      },
+      attributes: ['lead_id'],
+      raw: true
+    });
+
+    const excludedLeadIds = [...new Set(
+      leadsWithApprovedQuotations.map(q => q.lead_id).filter(id => id !== null)
+    )];
+
     const leads = await Lead.findAll({
-      where: { is_active: true },
+      where: { 
+        is_active: true,
+        id: {
+          [Op.notIn]: excludedLeadIds
+        }
+      },
       include: [
         {
           model: Contact,
@@ -289,8 +308,7 @@ export const getAllLeadsActived = async (req, res) => {
           ]
         }
       ],
-            order: [['id', 'DESC']] // <-- Sort leads by created_at descending
-
+      order: [['id', 'DESC']]
     });
 
     res.status(200).json(leads);
@@ -498,31 +516,31 @@ export const updateLead = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating lead:", error);
-    res.status(500).json({ 
-      message: "Error updating lead", 
-      error: error.message 
+    res.status(500).json({
+      message: "Error updating lead",
+      error: error.message
     });
   }
 };
 // Delete a Lead
 export const deleteLead = async (req, res) => {
-    try {
-        const lead = await Lead.findByPk(req.params.id);
-        if (!lead) {
-            return res.status(404).json({
-                message: "Lead not found"
-            });
-        }
-
-        await lead.destroy();
-        res.status(200).json({
-            message: "Lead deleted successfully"
-        });
-    } catch (error) {
-        console.error("Error deleting lead:", error);
-        res.status(500).json({
-            message: "Error deleting lead",
-            error
-        });
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+    if (!lead) {
+      return res.status(404).json({
+        message: "Lead not found"
+      });
     }
+
+    await lead.destroy();
+    res.status(200).json({
+      message: "Lead deleted successfully"
+    });
+  } catch (error) {
+    console.error("Error deleting lead:", error);
+    res.status(500).json({
+      message: "Error deleting lead",
+      error
+    });
+  }
 };

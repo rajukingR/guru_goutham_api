@@ -8,7 +8,6 @@ const {
   OrderPersonalDetail,
   GoodsReceiptItem,
   GoodsReceipt,
-  Product,
   ProductTemplete,
   DeliveryChallan,
   DeliveryChallanItem,
@@ -942,8 +941,27 @@ export const getAllOrders1 = async (req, res) => {
 
 export const getAllOrdersApproved = async (req, res) => {
   try {
+    // First, get all order IDs that have approved dispatch orders
+    const approvedDispatchOrders = await DispatchOrder.findAll({
+      where: { 
+        dispatch_order_status: 'Approved' 
+      },
+      attributes: ['order_id'],
+      raw: true
+    });
+
+    // Extract unique order IDs that have approved dispatch orders
+    const orderIdsWithApprovedDispatch = [...new Set(
+      approvedDispatchOrders.map(dispatch => dispatch.order_id).filter(id => id !== null)
+    )];
+
     const orders = await Order.findAll({
-      where: { order_status: 'Approved' },
+      where: { 
+        order_status: 'Approved',
+        id: {
+          [Op.notIn]: orderIdsWithApprovedDispatch // Exclude orders with approved dispatch orders
+        }
+      },
       include: [
         { model: OrderItem, as: 'items' },
         { model: OrderAddress, as: 'address' },

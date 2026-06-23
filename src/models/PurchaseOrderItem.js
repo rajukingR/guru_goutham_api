@@ -22,10 +22,6 @@ export default (sequelize, DataTypes) => {
       foreignKey: 'purchase_order_id',
       as: 'purchase_order',
     });
-     PurchaseOrderItem.belongsTo(models.Product, {
-      foreignKey: 'product_id',
-      as: 'product' // optional
-    });
   };
 
   return PurchaseOrderItem;

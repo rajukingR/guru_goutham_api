@@ -6,10 +6,10 @@ import morgan from 'morgan';
 import helmet from 'helmet';
 import db from './config/db.js';
 import cron from 'node-cron';
-
+import axios from 'axios';
+import https from 'https';
 import parentRouter from './routes/parentRouter.js';
 import userRoutes from './routes/userDetailsRoutes.js';
-import productRoutes from './routes/productRoutes.js';
 import supplierRoutes from './routes/supplierRoutes.js';
 import PurchaseQuotationRoutes from './routes/PurchaseQuotationRoutes.js';
 import purchaseOrdersRoutes from './routes/purchaseOrdersRoutes.js';
@@ -20,26 +20,15 @@ import QuotationRoutes from './routes/QuotationRoutes.js';
 import OrderRoutes from './routes/OrderRoutes.js';
 import deliveryChallansRoutes from './routes/deliveryChallansRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
-import grnRoutes from './routes/grnRoutes.js';
 import rolesRoutes from './routes/rolesRoutes.js';
-import clientsRoutes from './routes/clientsRoutes.js';
-import contactTypeRoutes from './routes/contactTypeRoutes.js';
 import taxTypeRoutes from './routes/taxTypeRoutes.js';
 import purchaseRequestsRoutes from './routes/purchaseRequestsRoutes.js';
 import productTempleteRoutes from './routes/productTempleteRoutes.js';
 import productCategoriesRoutes from './routes/productCategoriesRoutes.js';
 import brandRoutes from './routes/brandRoutes.js';
-import stockLocationRoutes from './routes/stockLocationRoutes.js';
 import roleRoutes from './routes/roleRoutes.js';
-import taxListRoutes from './routes/taxListRoutes.js';
-import GoodsReturnNoteRoutes from "./routes/GoodsReturnNoteRoutes.js";
-import productServiceRoutes from './routes/ProductServiceRoutes.js';
 import CreditNoteRoutes from './routes/CreditNoteRoutes.js';
-import clientRoutes from './routes/clientDetailsRoutes.js';
 
-import assetRoutesTracker from './routes/AssetRoutes.js';
-import assetModificationRoutes from './routes/assetModificationRoutes.js';
-import ramSpecRoutes from './routes/ramSpecRoutes.js';
 import stateRoutes from './routes/salesRoutes.js';
 import dispatchOrderRoutes from "./routes/dispatchOrderRoutes.js";
 import assembledAssetRoutes from "./routes/assembledAssetRoutes.js";
@@ -82,7 +71,7 @@ app.use(
 
 // CORS setup
 const allowedOrigins = [
-  'http://localhost:5174',
+  'http://localhost:5173',
   'http://localhost:5000',
   'https://gurugoutham.innogenxsolutions.com',
 ];
@@ -107,9 +96,49 @@ db.authenticate()
 app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
 
 
+app.get('/api/pincode/:pincode', async (req, res) => {
+  const { pincode } = req.params;
+
+  if (!/^[1-9][0-9]{5}$/.test(pincode)) {
+    return res.status(400).json([{
+      Status: "Error",
+      Message: "Invalid pincode format",
+      PostOffice: []
+    }]);
+  }
+
+  try {
+    const httpsAgent = new https.Agent({
+      rejectUnauthorized: false
+    });
+
+    const response = await axios.get(
+      `https://api.postalpincode.in/pincode/${pincode}`,
+      {
+        httpsAgent,
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    return res.json(response.data);
+
+  } catch (error) {
+    console.error('Pincode API Error:', error.message);
+
+    return res.status(500).json([{
+      Status: "Error",
+      Message: error.message,
+      PostOffice: []
+    }]);
+  }
+});
+
 app.use('/api', parentRouter)
 app.use('/api/users', userRoutes);
-app.use('/api/products', productRoutes);
 app.use('/api/supplier', supplierRoutes);
 app.use('/api/purchase-quotation', PurchaseQuotationRoutes);
 app.use('/api/purchase-orders', purchaseOrdersRoutes);
@@ -120,26 +149,15 @@ app.use('/api/quotations', QuotationRoutes);
 app.use('/api/orders', OrderRoutes);
 app.use('/api/delivery-challans', deliveryChallansRoutes);
 app.use('/api/invoices', invoiceRoutes);
-app.use('/api/grns', grnRoutes);
 app.use('/api/roles', rolesRoutes);
-app.use('/api/clients', clientsRoutes);
-app.use('/api/contact-types', contactTypeRoutes);
 app.use('/api/tax-types', taxTypeRoutes);
 app.use('/api/purchase-requests', purchaseRequestsRoutes);
 app.use('/api/product-templete', productTempleteRoutes);
 app.use('/api/product-categories', productCategoriesRoutes);
 app.use('/api/product-brands', brandRoutes);
-app.use('/api/stock-location', stockLocationRoutes);
 app.use('/api/roles', roleRoutes);
-app.use('/api/tax-list', taxListRoutes);
 app.use("/api/branches", branchesRoutes);
-app.use("/api/goods-return-notes", grnRoutes);
-app.use('/api/product-services', productServiceRoutes);
 app.use('/api/credit-notes', CreditNoteRoutes);
-app.use('/api/user', clientRoutes);
-app.use('/api/asset-modification', assetRoutesTracker);
-app.use('/api/asset-modifications', assetModificationRoutes);
-app.use('/api/ram-specs', ramSpecRoutes);
 app.use('/api/sales-report', stateRoutes);
 app.use("/api/dispatch-orders", dispatchOrderRoutes);
 app.use("/api/assembled-assets", assembledAssetRoutes);

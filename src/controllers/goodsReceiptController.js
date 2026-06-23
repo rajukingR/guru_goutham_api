@@ -11,7 +11,6 @@ const {
   DeliveryChallanItem,
   Invoice,
   InvoiceItem,
-  AssetId,
   DispatchOrder,
   DispatchOrderItem,
   CreditNote,
@@ -23,7 +22,6 @@ const {
 } = db;
 
 const Supplier = db.Supplier;
-const AssetIdComponent = db.AssetIdComponent;
 const AssetTransaction = db.AssetTransaction;
 
 
@@ -110,7 +108,6 @@ export const createGoodsReceipt = async (req, res) => {
       }))
     );
 
-    // 6. Create AssetId entries
     const assetEntries = [];
     for (const item of items) {
       const product = await ProductTemplete.findByPk(item.product_id);
@@ -118,7 +115,7 @@ export const createGoodsReceipt = async (req, res) => {
 
       for (const assetId of item.asset_ids || []) {
         assetEntries.push({
-          invoice_id: receipt.id, // if you are using invoice_id in AssetId
+          invoice_id: receipt.id, // if you are using invoice_id in
           product_id: item.product_id,
           asset_id: assetId,
           product_name: item.product_name,
@@ -143,9 +140,6 @@ export const createGoodsReceipt = async (req, res) => {
       }
     }
 
-    if (assetEntries.length > 0) {
-      await AssetId.bulkCreate(assetEntries);
-    }
 
     return res.status(201).json({
       message: "Goods receipt and assets created successfully",
@@ -1141,7 +1135,7 @@ export const getApprovedProductSummary = async (req, res) => {
       swappedAssetMap[swap.product_id].add(swap.asset_id);
     }
 
-    // 8. Returned assets
+    // 8. Returned assets from credit notes
     const creditReturnedMap = {};
     const creditNoteDeviceIdsSet = new Set();
 
@@ -1158,7 +1152,59 @@ export const getApprovedProductSummary = async (req, res) => {
       }
     }
 
-    // 9. Peripherals for returned devices
+    // 9. CRITICAL: Map returned devices to their ACTUAL product ID
+    // This maps devices like RAM-110 (returned under product 99) to their actual product (92)
+    let returnedDeviceActualProductMap = {};
+    
+    if (creditNoteDeviceIdsSet.size > 0) {
+      const returnedDeviceIds = Array.from(creditNoteDeviceIdsSet);
+      
+      // Get the peripheral_asset_id_product_id which is the actual product ID for components
+      const deviceMappings = await AssetTransaction.findAll({
+        where: {
+          asset_id: returnedDeviceIds
+        },
+        attributes: ['asset_id', 'peripheral_asset_id_product_id', 'product_id'],
+        raw: true
+      });
+      
+      for (const mapping of deviceMappings) {
+        if (mapping.asset_id && mapping.peripheral_asset_id_product_id) {
+          // Use peripheral_asset_id_product_id as the actual product ID
+          returnedDeviceActualProductMap[mapping.asset_id] = mapping.peripheral_asset_id_product_id;
+        } else if (mapping.asset_id && mapping.product_id) {
+          returnedDeviceActualProductMap[mapping.asset_id] = mapping.product_id;
+        }
+      }
+      
+      // Also check assembled_components table
+      const assembledMappings = await AssembledComponent.findAll({
+        where: {
+          asset_id: returnedDeviceIds
+        },
+        attributes: ['asset_id', 'product_id'],
+        raw: true
+      });
+      
+      for (const mapping of assembledMappings) {
+        if (mapping.asset_id && mapping.product_id) {
+          if (!returnedDeviceActualProductMap[mapping.asset_id]) {
+            returnedDeviceActualProductMap[mapping.asset_id] = mapping.product_id;
+          }
+        }
+      }
+    }
+
+    // 9.5 Create a map of returned devices by their ACTUAL product ID
+    const returnedDevicesByActualProduct = {};
+    for (const [deviceId, actualProductId] of Object.entries(returnedDeviceActualProductMap)) {
+      if (!returnedDevicesByActualProduct[actualProductId]) {
+        returnedDevicesByActualProduct[actualProductId] = new Set();
+      }
+      returnedDevicesByActualProduct[actualProductId].add(deviceId);
+    }
+
+    // 10. Peripherals for returned devices
     let peripheralsByParent = {};
     let returnedPeripheralProductMap = {};
 
@@ -1176,7 +1222,8 @@ export const getApprovedProductSummary = async (req, res) => {
           'asset_id',
           'product_id',
           'peripheral_asset_id_product_id'
-        ]
+        ],
+        raw: true
       });
 
       peripheralsByParent = {};
@@ -1198,7 +1245,7 @@ export const getApprovedProductSummary = async (req, res) => {
       }
     }
 
-    // 10. Assembled components
+    // 11. Assembled components
     const assembledComponents = await AssembledComponent.findAll({
       attributes: ['asset_id', 'product_id']
     });
@@ -1216,7 +1263,7 @@ export const getApprovedProductSummary = async (req, res) => {
       }
     }
 
-    // 11. Product templates
+    // 12. Product templates
     const productIdsFromGRN = Object.keys(quantityMap).map(Number);
     
     // 🔍 SEARCH: Build where clause for product search
@@ -1243,37 +1290,49 @@ export const getApprovedProductSummary = async (req, res) => {
     // Filter product IDs that match search
     const matchedProductIds = productTemplatesGRN.map(p => p.id);
     
-    // Only process products that match search criteria
+    // 13. Process products with correct returned device mapping
     let result = matchedProductIds.map(productId => {
       const totalQty = quantityMap[productId];
       const allAssetsFromGRN = assetMap[productId] || [];
 
-      const assetsNotInAssemblies = allAssetsFromGRN.filter(assetId =>
+      // Get returned devices that ACTUALLY belong to this product
+      const returnedSet = returnedDevicesByActualProduct[productId] || new Set();
+
+      // Remove returned devices from assetsNotInAssemblies
+      const assetsWithoutReturned = allAssetsFromGRN.filter(assetId => 
+        !returnedSet.has(assetId)
+      );
+      
+      const assetsNotInAssemblies = assetsWithoutReturned.filter(assetId =>
         !allAssemblyAssetIds.has(assetId)
       );
 
       const totalAssetIds = [...new Set(assetsNotInAssemblies)];
       const clientSideSet = clientSideAssetsByProduct[productId] || new Set();
-      const returnedSet = creditReturnedMap[productId] || new Set();
       const swappedSet = swappedAssetMap[productId] || new Set();
 
-      const returnedPeripheralAssetsForThisProduct = new Set();
-      for (const [assetId, peripheralProductId] of Object.entries(returnedPeripheralProductMap)) {
-        if (Number(peripheralProductId) === productId) {
-          returnedPeripheralAssetsForThisProduct.add(assetId);
-        }
-      }
-
+      // Available assets: exclude client side, swapped, BUT add returned devices
       const availableSet = new Set(
         assetsNotInAssemblies.filter(id => 
           !clientSideSet.has(id) && !swappedSet.has(id)
         )
       );
+      
+      // Add returned devices to available set
+      for (const deviceId of returnedSet) {
+        availableSet.add(deviceId);
+      }
 
-      const assemblyAssetsForThisProduct = assemblyAssetsByProduct[productId] || new Set();
+      // Assembly assets: remove returned devices from assembly components
+      let assemblyAssetsForThisProduct = new Set(assemblyAssetsByProduct[productId] || new Set());
+      for (const deviceId of returnedSet) {
+        assemblyAssetsForThisProduct.delete(deviceId);
+      }
+      
       const componentQty = assemblyAssetsForThisProduct.size;
       const swappedCount = swappedSet.size;
       
+      // FIXED: Don't add returnedSet.size because returned devices are already in totalQty
       const adjustedTotalQty = totalQty - componentQty - swappedCount;
       const usedQty = clientSideSet.size;
       const availableQty = availableSet.size;
@@ -1281,23 +1340,8 @@ export const getApprovedProductSummary = async (req, res) => {
       const purchasePrice = parseFloat(product?.purchase_price || 0);
       const totalValue = availableQty * purchasePrice;
 
+      // Returned devices array (empty since they're moved to available)
       const returnedDevices = [];
-
-      for (const deviceId of returnedSet) {
-        returnedDevices.push({
-          device_id: deviceId,
-          peripherals: peripheralsByParent[deviceId] || []
-        });
-      }
-
-      for (const assetId of returnedPeripheralAssetsForThisProduct) {
-        if (!returnedSet.has(assetId)) {
-          returnedDevices.push({
-            device_id: assetId,
-            peripherals: []
-          });
-        }
-      }
 
       return {
         product_id: productId,
@@ -1311,12 +1355,12 @@ export const getApprovedProductSummary = async (req, res) => {
         available_asset_ids: Array.from(availableSet).sort((a, b) => String(a).localeCompare(String(b))),
         assembled_component_ids: Array.from(assemblyAssetsForThisProduct).sort((a, b) => String(a).localeCompare(String(b))),
         swapped_asset_ids: Array.from(swappedSet).sort((a, b) => String(a).localeCompare(String(b))),
-        returned_devices: returnedDevices.sort((a, b) => String(a.device_id).localeCompare(String(b.device_id))),
+        returned_devices: returnedDevices,
         product
       };
     });
 
-    // 12. Include Assembled Assets (with search filter)
+    // 14. Include Assembled Assets (with search filter)
     const assembledAssets = await AssembledAsset.findAll({
       where: { is_active: 1 }
     });
@@ -1346,7 +1390,7 @@ export const getApprovedProductSummary = async (req, res) => {
 
       const parentAssetId = asset.parent_asset_id;
       const clientSideSet = clientSideAssetsByProduct[productId] || new Set();
-      const returnedSet = creditReturnedMap[productId] || new Set();
+      const returnedSet = returnedDevicesByActualProduct[productId] || new Set();
       const swappedSet = swappedAssetMap[productId] || new Set();
 
       const returnedPeripheralAssetsForThisProduct = new Set();
@@ -1370,14 +1414,18 @@ export const getApprovedProductSummary = async (req, res) => {
       if (!isWithClient && !isSwapped) {
         availableAssetIds = [parentAssetId];
       }
+      
+      // Add returned devices to available
+      for (const deviceId of allReturnedForProduct) {
+        if (!availableAssetIds.includes(deviceId)) {
+          availableAssetIds.push(deviceId);
+        }
+      }
 
       const purchasePrice = parseFloat(product.purchase_price || 0);
       const totalValue = isSwapped ? 0 : purchasePrice;
 
-      const returnedDevices = Array.from(allReturnedForProduct).map(deviceId => ({
-        device_id: deviceId,
-        peripherals: peripheralsByParent[deviceId] || []
-      }));
+      const returnedDevices = [];
 
       result.push({
         product_id: productId,
@@ -1391,11 +1439,11 @@ export const getApprovedProductSummary = async (req, res) => {
         available_asset_ids: availableAssetIds,
         swapped_asset_ids: isSwapped ? [parentAssetId] : [],
         returned_devices: returnedDevices,
-        product
+        product: product.toJSON()
       });
     }
 
-    // 13. MERGE Assembled PC products with same specifications
+    // 15. MERGE Assembled PC products with same specifications
     const mergedResult = [];
     const processedProductIds = new Set();
 
@@ -1455,7 +1503,6 @@ export const getApprovedProductSummary = async (req, res) => {
 
     // 🎯 CONDITIONAL RESPONSE: Check if pagination is requested
     if (hasPagination) {
-      // Return paginated response
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
       const paginatedProducts = result.slice(startIndex, endIndex);
@@ -1481,7 +1528,6 @@ export const getApprovedProductSummary = async (req, res) => {
         products: paginatedProducts
       });
     } else {
-      // Return ALL data without pagination wrapper
       res.status(200).json({
         summary: {
           total_used_quantity: totalUsedCount,
@@ -1497,7 +1543,6 @@ export const getApprovedProductSummary = async (req, res) => {
     res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
-
 
 export const getApprovedProductSummary1 = async (req, res) => {
   try {
@@ -2250,13 +2295,6 @@ export const updateGoodsReceipt = async (req, res) => {
       }
     }
 
-    // 6. Update AssetId table
-    // Remove old assets for this receipt
-    await AssetId.destroy({
-      where: {
-        invoice_id: id
-      }
-    });
 
     // Insert fresh AssetIds from updated items
     const assetEntries = [];
@@ -2291,9 +2329,6 @@ export const updateGoodsReceipt = async (req, res) => {
       }
     }
 
-    if (assetEntries.length > 0) {
-      await AssetId.bulkCreate(assetEntries);
-    }
 
     return res.status(200).json({
       message: "Goods receipt updated successfully",

@@ -14,6 +14,10 @@ const generateRandomProductId = () => {
   return `PRD-${randomStr}`;
 };
 
+
+
+
+
 export const createAssembledAsset = async (req, res) => {
   try {
     const file = req.file;
@@ -46,7 +50,7 @@ export const createAssembledAsset = async (req, res) => {
     const assembledAsset = await AssembledAsset.create({
       assembled_name,
       parent_asset_id,
-      product_image: file?.filename || '', // ✅ Save image filename
+      product_image: file?.filename || '',
       is_active
     });
 
@@ -124,32 +128,65 @@ export const createAssembledAsset = async (req, res) => {
       return value !== undefined && value !== null ? String(value) : defaultValue;
     };
 
-    // Handle RAM - it might be an array or object
+    // ✅ FIXED: Handle RAM - SUM all RAM sizes (e.g., two 16GB = 32GB)
     let ramSize = '';
     let ramType = '';
+    let totalRamInGB = 0;
+
     if (components?.ram) {
-      if (Array.isArray(components.ram) && components.ram.length > 0) {
-        ramSize = components.ram[0]?.size || '';
-        ramType = components.ram[0]?.type || '';
-      } else if (components.ram?.size) {
-        ramSize = components.ram.size || '';
-        ramType = components.ram.type || '';
+      // Convert to array if it's a single object
+      const ramArray = Array.isArray(components.ram) ? components.ram : [components.ram];
+      
+      if (ramArray.length > 0) {
+        // Filter out invalid entries and sum all RAM sizes
+        ramArray.forEach(ramItem => {
+          if (ramItem && ramItem.size) {
+            // Extract numeric value from size string (e.g., "16GB", "8GB", "32GB")
+            const sizeMatch = String(ramItem.size).match(/(\d+)/);
+            if (sizeMatch) {
+              totalRamInGB += parseInt(sizeMatch[1]);
+            }
+          }
+        });
+        
+        // Set ramSize as total with "GB" suffix
+        ramSize = totalRamInGB > 0 ? `${totalRamInGB}GB` : '';
+        
+        // Get RAM type from first valid item (usually same for all)
+        const firstValidRam = ramArray.find(item => item && item.type);
+        ramType = firstValidRam?.type || '';
       }
     }
 
-    // Handle Storage
+    // Handle Storage (unchanged - but also supports multiple storage devices if needed)
     let storageSize = '';
     let diskType = '';
     let ssdType = '';
+    let totalStorageInGB = 0;
+    
     if (components?.storage) {
-      if (Array.isArray(components.storage) && components.storage.length > 0) {
-        storageSize = components.storage[0]?.size || '';
-        diskType = components.storage[0]?.type || '';
-        ssdType = diskType === 'SSD' ? (components.storage[0]?.model || '') : '';
-      } else if (components.storage?.size) {
-        storageSize = components.storage.size || '';
-        diskType = components.storage.type || '';
-        ssdType = diskType === 'SSD' ? (components.storage.model || '') : '';
+      // Convert to array if it's a single object
+      const storageArray = Array.isArray(components.storage) ? components.storage : [components.storage];
+      
+      if (storageArray.length > 0) {
+        // Sum all storage sizes (optional enhancement)
+        storageArray.forEach(storageItem => {
+          if (storageItem && storageItem.size) {
+            const sizeMatch = String(storageItem.size).match(/(\d+)/);
+            if (sizeMatch) {
+              totalStorageInGB += parseInt(sizeMatch[1]);
+            }
+          }
+        });
+        
+        storageSize = totalStorageInGB > 0 ? `${totalStorageInGB}GB` : (storageArray[0]?.size || '');
+        diskType = storageArray[0]?.type || '';
+        
+        // Handle SSD type
+        if (diskType === 'SSD') {
+          const ssdTypes = storageArray.filter(item => item?.type === 'SSD').map(item => item?.model || '');
+          ssdType = ssdTypes.join(', ');
+        }
       }
     }
 
@@ -165,9 +202,9 @@ export const createAssembledAsset = async (req, res) => {
       grade: 'Default Grade',
       model: assembled_name,
       processor: safeGet(components, 'processor.model'),
-      ram: ramSize,
+      ram: ramSize,        // ✅ Now shows total RAM (e.g., "32GB" for two 16GB sticks)
       ramType: ramType,
-      storage: storageSize,
+      storage: storageSize, // ✅ Now shows total storage if multiple drives
       disk_type: diskType,
       ssd_type: ssdType,
       smps: safeGet(components, 'smps.model'),
@@ -189,6 +226,7 @@ export const createAssembledAsset = async (req, res) => {
     return res.status(201).json({
       message: "Assembled PC created successfully!!",
       assembledAsset,
+      productTempleteData // Optional: return the created product data
     });
 
   } catch (error) {
@@ -199,6 +237,193 @@ export const createAssembledAsset = async (req, res) => {
     });
   }
 };
+
+
+// export const createAssembledAsset = async (req, res) => {
+//   try {
+//     const file = req.file;
+//     const body = req.body;
+
+//     // Parse assembled_data JSON
+//     const assembledData = JSON.parse(body.assembled_data);
+
+//     const {
+//       assembled_name,
+//       parent_asset_id,
+//       components,
+//       is_active = true
+//     } = assembledData;
+
+//     // ✅ Step 0: Check if parent_asset_id already exists
+//     const existingAsset = await AssembledAsset.findOne({
+//       where: {
+//         parent_asset_id
+//       }
+//     });
+
+//     if (existingAsset) {
+//       return res.status(400).json({
+//         message: `Assembled Asset with parent_asset_id "${parent_asset_id}" already exists.`,
+//       });
+//     }
+
+//     // Step 1: Create AssembledAsset
+//     const assembledAsset = await AssembledAsset.create({
+//       assembled_name,
+//       parent_asset_id,
+//       product_image: file?.filename || '', // ✅ Save image filename
+//       is_active
+//     });
+
+//     // Step 2: Handle AssembledComponent
+//     const componentsData = [];
+
+//     for (const [componentType, value] of Object.entries(components)) {
+//       if (Array.isArray(value)) {
+//         for (const item of value) {
+//           if (item.asset_id?.trim()) {
+//             componentsData.push({
+//               assembled_id: assembledAsset.id,
+//               component_type: componentType,
+//               ...item,
+//               product_id: item.product_id ? parseInt(item.product_id) : null,
+//               ...(componentType === 'wifi' && {
+//                 frequency_band: item.frequency_band || '',
+//                 wifi_standard: item.wifi_standard || ''
+//               }),
+//             });
+//           }
+//         }
+//       } else if (value?.asset_id?.trim()) {
+//         componentsData.push({
+//           assembled_id: assembledAsset.id,
+//           component_type: componentType,
+//           ...value,
+//           product_id: value.product_id ? parseInt(value.product_id) : null,
+//           ...(componentType === 'wifi' && {
+//             frequency_band: value.frequency_band || '',
+//             wifi_standard: value.wifi_standard || ''
+//           }),
+//         });
+//       }
+//     }
+
+//     if (componentsData.length > 0) {
+//       await AssembledComponent.bulkCreate(componentsData);
+//     }
+
+//     // Step 3: Calculate prices
+//     const productCountMap = {};
+//     componentsData.forEach((comp) => {
+//       if (comp.product_id) {
+//         const id = parseInt(comp.product_id);
+//         productCountMap[id] = (productCountMap[id] || 0) + 1;
+//       }
+//     });
+
+//     let totalPurchasePrice = 0;
+//     let totalPerMonthPrice = 0;
+
+//     if (Object.keys(productCountMap).length > 0) {
+//       const products = await ProductTemplete.findAll({
+//         where: {
+//           id: Object.keys(productCountMap)
+//         },
+//         attributes: ["id", "purchase_price", "rent_price_per_month"],
+//       });
+
+//       products.forEach((product) => {
+//         const count = productCountMap[product.id] || 1;
+//         const purchasePrice = parseFloat(product.purchase_price || 0);
+//         const rentPrice = parseFloat(product.rent_price_per_month || 0);
+
+//         totalPurchasePrice += purchasePrice * count;
+//         totalPerMonthPrice += rentPrice * count;
+//       });
+//     }
+
+//     // Helper function to safely get nested properties
+//     const safeGet = (obj, path, defaultValue = '') => {
+//       if (!obj) return defaultValue;
+//       const value = path.split('.').reduce((current, key) => current?.[key], obj);
+//       return value !== undefined && value !== null ? String(value) : defaultValue;
+//     };
+
+//     // Handle RAM - it might be an array or object
+//     let ramSize = '';
+//     let ramType = '';
+//     if (components?.ram) {
+//       if (Array.isArray(components.ram) && components.ram.length > 0) {
+//         ramSize = components.ram[0]?.size || '';
+//         ramType = components.ram[0]?.type || '';
+//       } else if (components.ram?.size) {
+//         ramSize = components.ram.size || '';
+//         ramType = components.ram.type || '';
+//       }
+//     }
+
+//     // Handle Storage
+//     let storageSize = '';
+//     let diskType = '';
+//     let ssdType = '';
+//     if (components?.storage) {
+//       if (Array.isArray(components.storage) && components.storage.length > 0) {
+//         storageSize = components.storage[0]?.size || '';
+//         diskType = components.storage[0]?.type || '';
+//         ssdType = diskType === 'SSD' ? (components.storage[0]?.model || '') : '';
+//       } else if (components.storage?.size) {
+//         storageSize = components.storage.size || '';
+//         diskType = components.storage.type || '';
+//         ssdType = diskType === 'SSD' ? (components.storage.model || '') : '';
+//       }
+//     }
+
+//     // Step 4: Create ProductTemplete with safe property access
+//     const productTempleteData = {
+//       product_category: "Assembled PC",
+//       product_id: generateRandomProductId(),
+//       assembled_id: assembledAsset.id,
+//       product_name: assembled_name,
+//       purchase_price: totalPurchasePrice,
+//       rent_price_per_month: totalPerMonthPrice,
+//       brand: 'Default Brand',
+//       grade: 'Default Grade',
+//       model: assembled_name,
+//       processor: safeGet(components, 'processor.model'),
+//       ram: ramSize,
+//       ramType: ramType,
+//       storage: storageSize,
+//       disk_type: diskType,
+//       ssd_type: ssdType,
+//       smps: safeGet(components, 'smps.model'),
+//       cabinet: safeGet(components, 'cabinet.model'),
+//       motherboard: safeGet(components, 'motherboard.model'),
+//       capacity: safeGet(components, 'smps.wattage'),
+//       wifi_standard: safeGet(components, 'wifi.wifi_standard'),
+//       frequency_band: safeGet(components, 'wifi.frequency_band'),
+//       graphics: safeGet(components, 'gpu.model'),
+//       os: components?.os || '',
+//       is_active: true,
+//       product_image: file?.filename || '',
+//       created_at: new Date(),
+//       updated_at: new Date(),
+//     };
+
+//     await ProductTemplete.create(productTempleteData);
+
+//     return res.status(201).json({
+//       message: "Assembled PC created successfully!!",
+//       assembledAsset,
+//     });
+
+//   } catch (error) {
+//     console.error("Create failed:", error);
+//     res.status(500).json({
+//       message: "Create failed",
+//       error: error.message || error
+//     });
+//   }
+// };
 
 
 

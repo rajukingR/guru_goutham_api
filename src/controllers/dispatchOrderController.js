@@ -317,20 +317,21 @@ export const getAllDispatchOrders = async (req, res) => {
 
 export const getAllApprovedDispatchOrders = async (req, res) => {
   try {
-    // Step 1: Get dispatch_order_ids from GRNs where grn_status = "Approved"
-    const grnApprovedDispatchOrderIds = await GRN.findAll({
-      attributes: ["dispatch_order_id"],
+    // Step 1: Get dispatch_order_ids from Delivery Challans where dc_status = "Delivered"
+    const deliveredDeliveryChallanOrderIds = await DeliveryChallan.findAll({
+      attributes: ["order_id"],
       where: {
-        grn_status: "Approved",
+        dc_status: "Delivered",
       },
       raw: true,
     });
 
-    const excludeIds = grnApprovedDispatchOrderIds.map(
-      (grn) => grn.dispatch_order_id
+    // Get only the order_ids to exclude
+    const excludeIds = deliveredDeliveryChallanOrderIds.map(
+      (dc) => dc.order_id
     );
 
-    // Step 2: Fetch Dispatch Orders excluding those with Approved GRNs
+    // Step 2: Fetch Dispatch Orders excluding those with Delivered Delivery Challans
     const approvedOrders = await DispatchOrder.findAll({
       where: {
         dispatch_order_status: "Approved",
@@ -391,7 +392,6 @@ export const getAllApprovedDispatchOrders = async (req, res) => {
     });
   }
 };
-
 
 
 
@@ -505,7 +505,6 @@ export const getAllApprovedDispatchOrders = async (req, res) => {
 
 // export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
 //   try {
-//     // Step 1: Get GRN-approved DispatchOrder IDs
 //     const grnApprovedDispatchOrderIds = await GRN.findAll({
 //       attributes: ["dispatch_order_id"],
 //       where: { grn_status: "Approved" },
@@ -627,25 +626,10 @@ export const getAllApprovedDispatchOrders = async (req, res) => {
 
 export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
   try {
-    // Step 1: Get GRN-approved DispatchOrder IDs
-    const grnApprovedDispatchOrderIds = await GRN.findAll({
-      attributes: ["dispatch_order_id"],
-      where: {
-        grn_status: "Approved"
-      },
-      raw: true,
-    });
-    const excludeIds = grnApprovedDispatchOrderIds.map(
-      (grn) => grn.dispatch_order_id
-    );
-
-    // Step 2: Fetch ALL Approved Dispatch Orders
+    // Step 1: Fetch ALL Approved Dispatch Orders (no GRN exclusion)
     const allApprovedOrders = await DispatchOrder.findAll({
       where: {
         dispatch_order_status: "Approved",
-        id: {
-          [Op.notIn]: excludeIds
-        },
       },
       include: [{
           model: DispatchOrderItem,
@@ -666,7 +650,7 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
       ],
     });
 
-    // Step 3: Fetch Approved Direct Invoices from Quotations
+    // Step 2: Fetch Approved Direct Invoices from Quotations
     const directInvoiceQuotations = await Quotation.findAll({
       where: {
         is_direct_invoice: 1,
@@ -687,7 +671,7 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
       ],
     });
 
-    // Step 4: Apply filter logic to DispatchOrders
+    // Step 3: Apply filter logic to DispatchOrders
     const latestRentPerCustomer = {}; // key: customerCode+payment_type
     const buyOrders = [];
 
@@ -717,14 +701,14 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
       }
     }
 
-    // Step 5: Adjust DispatchOrders with Credit Notes + Asset Swaps
+    // Step 4: Adjust DispatchOrders with Credit Notes + Asset Swaps
     const combinedOrders = [
       ...Object.values(latestRentPerCustomer),
       ...buyOrders,
     ];
 
     for (const order of combinedOrders) {
-      // --- 5.1 Handle Credit Notes ---
+      // --- 4.1 Handle Credit Notes ---
       const creditNotes = await CreditNote.findAll({
         where: {
           dispatch_order_id: order.id
@@ -746,7 +730,7 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
         }
       }
 
-      // --- 5.2 Handle Asset Swaps ---
+      // --- 4.2 Handle Asset Swaps ---
       const assetSwaps = await AssetSwap.findAll({
         where: {
           product_id: {
@@ -760,7 +744,7 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
         swapped_asset_id: swap.asset_id,
       }));
 
-      // --- 5.3 Apply Adjustments per Item ---
+      // --- 4.3 Apply Adjustments per Item ---
       for (const item of order.items) {
         // Credit Notes
         const matchedReturns = allReturnedItems.filter(
@@ -799,7 +783,7 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
           );
         }
 
-        // --- 5.4 ✅ Final device-based quantity correction ---
+        // --- 4.4 ✅ Final device-based quantity correction ---
         if (!item.dataValues.device_ids || item.dataValues.device_ids.length === 0) {
           item.dataValues.quantity = 0;
         } else {
@@ -807,7 +791,8 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
         }
       }
     }
-    // Step 6: Merge Quotations (direct invoices) into result
+
+    // Step 5: Merge Quotations (direct invoices) into result
     const formattedQuotations = directInvoiceQuotations.map((q) => {
       return {
         ...q.get({
@@ -817,7 +802,7 @@ export const getAllApprovedDispatchOrdersApprovedDC = async (req, res) => {
       };
     });
 
-    // Step 7: Final sort by ID DESC
+    // Step 6: Final sort by ID DESC
     const sortedCombinedOrders = [...combinedOrders, ...formattedQuotations].sort(
       (a, b) => b.id - a.id
     );

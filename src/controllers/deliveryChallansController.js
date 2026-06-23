@@ -889,9 +889,7 @@ export const getDeliveryChallansByCustomerCode1 = async (req, res) => {
 
 
 export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res) => {
-  const {
-    customer_code
-  } = req.params;
+  const { customer_code } = req.params;
 
   function parseDeviceIds(deviceIdsRaw) {
     if (!deviceIdsRaw) return [];
@@ -909,19 +907,21 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
       where: {
         customer_code,
         peripheral_update: true,
-        [Op.or]: [{
-            defualt_dc: false
-          },
-          {
-            defualt_dc: null
-          },
+        [Op.or]: [
+          { defualt_dc: false },
+          { defualt_dc: null },
         ],
       },
       attributes: ["id", "dc_id", "customer_code", "peripheral_update", "defualt_dc"],
     });
 
     if (!challans || challans.length === 0) {
-      return res.status(200).json([]);
+      return res.status(200).json({
+        success: true,
+        message: "No peripheral challans found for this customer",
+        data: [],
+        totalAvailableAssets: 0,
+      });
     }
 
     const challanIds = challans.map((c) => c.id);
@@ -947,15 +947,22 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
           "rent_price_per_month",
           "capacity",
         ],
-      }, ],
+      }],
     });
+
+    if (!challanItems || challanItems.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No items found in peripheral challans",
+        data: [],
+        totalAvailableAssets: 0,
+      });
+    }
 
     // ✅ Step 3: Get ALL asset transactions (added + removed)
     const allAssetTransactions = await AssetTransaction.findAll({
       attributes: ["asset_id", "status", "created_at"],
-      order: [
-        ["created_at", "DESC"]
-      ], // latest first
+      order: [["created_at", "DESC"]],
       raw: true,
     });
 
@@ -963,21 +970,35 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
     const latestStatus = {};
     for (const tx of allAssetTransactions) {
       if (!latestStatus[tx.asset_id]) {
-        latestStatus[tx.asset_id] = tx.status; // take first (latest) entry
+        latestStatus[tx.asset_id] = tx.status;
       }
     }
 
-    // ✅ Step 5: Only those whose latest status = 'Added' are active
-    const activeAssetIds = Object.keys(latestStatus).filter(
-      (id) => latestStatus[id] === "Added"
+    // ✅ Step 5: Track which assets are active (latest status = 'Added')
+    const activeAssetIds = new Set(
+      Object.keys(latestStatus).filter((id) => latestStatus[id] === "Added")
     );
 
-    // ✅ Step 6: Filter out active assets from challan items
+    // ✅ Step 6: Also track assets that have ever been assigned
+    const allAssignedAssetIds = new Set(Object.keys(latestStatus));
+
+    // ✅ Step 7: Process each challan item
     const response = challanItems
       .map((item) => {
         const deviceIds = parseDeviceIds(item.device_ids);
+        
+        // Separate available and used assets
         const availableDeviceIds = deviceIds.filter(
-          (deviceId) => !activeAssetIds.includes(deviceId)
+          (deviceId) => !activeAssetIds.has(deviceId)
+        );
+        
+        const usedDeviceIds = deviceIds.filter(
+          (deviceId) => activeAssetIds.has(deviceId)
+        );
+
+        // Check if there are any assets that were never assigned (not in any transaction)
+        const neverAssignedDeviceIds = deviceIds.filter(
+          (deviceId) => !allAssignedAssetIds.has(deviceId)
         );
 
         return {
@@ -988,11 +1009,26 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
           quantity: item.quantity,
           unit_price: item.unit_price,
           total_price: item.total_price,
+          
+          // Asset tracking arrays
           device_ids: availableDeviceIds,
+          used_device_ids: usedDeviceIds,
+          never_assigned_device_ids: neverAssignedDeviceIds,
+          
+          // Counts
           available_quantity: availableDeviceIds.length,
+          used_quantity: usedDeviceIds.length,
+          never_assigned_quantity: neverAssignedDeviceIds.length,
           total_quantity: deviceIds.length,
+          
+          // Status flags
+          has_available_assets: availableDeviceIds.length > 0,
+          all_assets_in_use: usedDeviceIds.length === deviceIds.length && deviceIds.length > 0,
+          no_assets_assigned: neverAssignedDeviceIds.length === deviceIds.length && deviceIds.length > 0,
+          
           created_at: item.created_at,
           updated_at: item.updated_at,
+          
           product: item.product ? {
             id: item.product.id,
             product_name: item.product.product_name,
@@ -1007,14 +1043,58 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
             capacity: item.product.capacity,
           } : null,
         };
-      })
-      .filter((item) => item.device_ids.length > 0);
+      });
 
-    return res.status(200).json(response);
+    // Calculate overall statistics
+    const totalAvailableAssets = response.reduce((sum, item) => sum + item.available_quantity, 0);
+    const totalUsedAssets = response.reduce((sum, item) => sum + item.used_quantity, 0);
+    const totalNeverAssignedAssets = response.reduce((sum, item) => sum + item.never_assigned_quantity, 0);
+    const hasAnyAvailableAssets = response.some(item => item.has_available_assets);
+
+    // Filter to only show items with available assets (optional - remove this if you want to see all items)
+    const filteredResponse = response.filter(item => item.has_available_assets);
+
+    // Return appropriate response
+    if (filteredResponse.length === 0 && response.length > 0) {
+      return res.status(200).json({
+        success: true,
+        message: "All peripheral assets are currently in use. No available assets found.",
+        data: response, // Return full data for debugging/information
+        filteredData: filteredResponse,
+        summary: {
+          total_products: response.length,
+          total_assets: totalAvailableAssets + totalUsedAssets + totalNeverAssignedAssets,
+          available_assets: totalAvailableAssets,
+          used_assets: totalUsedAssets,
+          never_assigned_assets: totalNeverAssignedAssets,
+          has_available_assets: false,
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: filteredResponse.length > 0 
+        ? `Found ${filteredResponse.length} product(s) with available assets` 
+        : "No peripheral assets available",
+      data: filteredResponse,
+      full_data: response, // Optional: include full data for debugging
+      summary: {
+        total_products: response.length,
+        total_assets: totalAvailableAssets + totalUsedAssets + totalNeverAssignedAssets,
+        available_assets: totalAvailableAssets,
+        used_assets: totalUsedAssets,
+        never_assigned_assets: totalNeverAssignedAssets,
+        has_available_assets: hasAnyAvailableAssets,
+      },
+    });
+    
   } catch (error) {
     console.error("Error fetching peripheral assets:", error);
     return res.status(500).json({
-      error: "Internal server error"
+      success: false,
+      error: "Internal server error",
+      message: error.message,
     });
   }
 };
@@ -1022,20 +1102,37 @@ export const getDeliveryChallansByCustomerCodePeripheralAssets = async (req, res
 
 export const getDeliveryChallanById = async (req, res) => {
   try {
-    const {
-      id
-    } = req.params;
+    const { id } = req.params;
 
-    // Step 1: Fetch delivery challan with items and products
+    // Step 1: Fetch delivery challan with items, products, and contact
     const deliveryChallan = await DeliveryChallan.findByPk(id, {
-      include: [{
-        model: DeliveryChallanItem,
-        as: "items",
-        include: [{
-          model: ProductTemplete,
-          as: "product",
-        }, ],
-      }, ],
+      include: [
+        {
+          model: DeliveryChallanItem,
+          as: "items",
+          include: [
+            {
+              model: ProductTemplete,
+              as: "product",
+            },
+          ],
+        },
+        {
+          model: DispatchOrder, // Include the DispatchOrder to get customer_code
+          as: "dispatch_order", // Make sure this association exists
+          include: [
+            {
+              model: Contact, // Include Contact through DispatchOrder
+              as: "contact", // This should match the association in DispatchOrder model
+            }
+          ]
+        },
+        // Alternatively, if you have a direct association to Contact from DeliveryChallan
+        // {
+        //   model: Contact,
+        //   as: "contact",
+        // }
+      ],
     });
 
     if (!deliveryChallan) {
@@ -1065,18 +1162,42 @@ export const getDeliveryChallanById = async (req, res) => {
       0
     );
 
-    // Step 4: Return response
+    // Step 4: Extract contact details from dispatch_order
+    let contactDetails = null;
+    if (deliveryChallanData.dispatch_order && deliveryChallanData.dispatch_order.contact) {
+      contactDetails = deliveryChallanData.dispatch_order.contact;
+      
+      // Parse address JSON if it exists
+      if (contactDetails.address) {
+        try {
+          const addressObj = typeof contactDetails.address === 'string' 
+            ? JSON.parse(contactDetails.address) 
+            : contactDetails.address;
+          contactDetails.address = addressObj;
+        } catch (e) {
+          console.error('Error parsing address JSON:', e);
+        }
+      }
+    }
+
+    // Step 5: Return response with contact details
     return res.status(200).json({
       ...deliveryChallanData,
       items: enrichedItems,
       totalQuantity,
       totalPrice,
+      contact: contactDetails, // Add contact details to response
+      customer_name: contactDetails ? 
+        contactDetails.company_name || 
+        `${contactDetails.first_name || ''} ${contactDetails.last_name || ''}`.trim() || 
+        'Unknown Customer' : 
+        'No Contact Found'
     });
   } catch (error) {
     console.error("Error fetching delivery challan:", error);
     return res.status(500).json({
       message: "Internal server error",
-      error,
+      error: error.message,
     });
   }
 };

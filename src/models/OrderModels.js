@@ -62,11 +62,6 @@ Order.associate = (models) => {
     as: 'personalDetails',
   });
 
-  Order.hasMany(models.GRN, {  // ✅ use models.GRN instead of GRN
-    foreignKey: 'dispatch_order_id',
-    as: 'grns',
-  });
-
    Order.belongsTo(models.Quotation, {
       foreignKey: 'quotation_id',
       as: 'quotation'
